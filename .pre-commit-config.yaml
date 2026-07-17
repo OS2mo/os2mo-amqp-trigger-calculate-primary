@@ -17,7 +17,7 @@ repos:
   #       language: system
   #       types: [file, python]
 
-  - repo: https://github.com/fsfe/reuse-tool
-    rev: v0.12.1
+  - repo: https://codeberg.org/fsfe/reuse-tool.git
+    rev: v6.2.0
     hooks:
       - id: reuse
