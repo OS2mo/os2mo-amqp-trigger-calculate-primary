@@ -25,6 +25,9 @@
           # native build deps needed to compile C extensions (e.g. cffi)
           pkgs.gcc
           pkgs.libffi
+
+          # utilities
+          pkgs.reuse
         ];
 
         shellHook = ''
