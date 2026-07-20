@@ -14,7 +14,6 @@ from more_itertools import ilen
 from more_itertools import only
 from more_itertools import pairwise
 from os2mo_helpers.mora_helpers import MoraHelper
-from ra_utils.deprecation import deprecated
 
 from calculate_primary.config import Settings
 
@@ -263,27 +262,6 @@ class MOPrimaryEngagementUpdater(ABC):
         for outputter, string, user_uuid, date in outputs:
             final_string = string + " for {} at {}".format(user_uuid, date.date())
             yield outputter, final_string
-
-    def check_user(self, user_uuid):
-        """Check the users primary engagement(s).
-
-        Prints messages to stdout / log as side-effect.
-
-        Args:
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            None
-        """
-        outputs = self._check_user_strings(self.check_filters, user_uuid)
-        for outputter, string in outputs:
-            outputter(string)
-
-    @deprecated
-    def recalculate_primary(self, *args, **kwargs):
-        """Deprecated alias for recalculate_user."""
-        # Kept solely for backwards compatability
-        return self.recalculate_user(*args, **kwargs)
 
     def _decide_primary(self, mo_engagements):
         """Decide which of the engagements in mo_engagements is the primary one.
