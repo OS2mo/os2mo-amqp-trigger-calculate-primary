@@ -15,16 +15,16 @@ keywords = ["os2mo", "amqp"]
 python = "^3.11"
 os2mo-data-import = "^6.2.0"
 pydantic = "^1.10.17"
-fastramqpi = "^9.1.0"
-fastapi = "^0.112.0"
-uvicorn = "^0.30.5"
+fastramqpi = "^12.5.0"
+fastapi = "^0.115.14"
+uvicorn = "^0.34.3"
 
 [tool.poetry.group.test.dependencies]
 pytest-split = "^0.8.0"
 pytest-cov = "^4.0.0"
 pytest-asyncio = "^0.21.0"
 hypothesis = "^6.103.1"
-pytest = "^7.4.3"
+pytest = "^8.4.2"
 
 [tool.poetry.group.pre-commit.dependencies]
 pre-commit = "^3.8.0"
