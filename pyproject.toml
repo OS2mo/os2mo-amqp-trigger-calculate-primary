@@ -14,8 +14,6 @@ keywords = ["os2mo", "amqp"]
 [tool.poetry.dependencies]
 python = "^3.11"
 os2mo-data-import = "^6.2.0"
-ra-utils = "^1.11.10"
-tenacity = "^8.3.0"
 pydantic = "^1.10.17"
 fastramqpi = "^9.1.0"
 fastapi = "^0.112.0"
@@ -25,7 +23,6 @@ uvicorn = "^0.30.5"
 pytest-split = "^0.8.0"
 pytest-cov = "^4.0.0"
 hypothesis = "^6.103.1"
-ra-utils = "^1.0.0"
 pytest = "^7.4.3"
 
 [tool.poetry.group.pre-commit.dependencies]
@@ -38,7 +35,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
-ariadne-codegen = {extras = ["subscriptions"], version = "^0.7.1"}
+ariadne-codegen = "^0.7.1"
 
 [tool.ariadne-codegen]
 
