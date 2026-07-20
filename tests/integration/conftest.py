@@ -7,8 +7,8 @@ from typing import Any
 from typing import AsyncIterator
 from uuid import UUID
 
+import httpx
 import pytest
-from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastramqpi.config import Settings as FastRAMQPISettings
 from httpx import AsyncClient
 from zoneinfo import ZoneInfo
@@ -45,18 +45,33 @@ async def mo_client() -> AsyncIterator[AsyncClient]:
 
     Overrides the unauthenticated `mo_client` from fastramqpi.pytest_plugin to
     provide OAuth2 client-credentials authentication, which MO requires.
+
+    The token is fetched manually (rather than via ``AsyncOAuth2Client``) to
+    avoid interactions between authlib's internal token-refresh client and
+    ``respx``: the auto-use ``passthrough_backing_services`` fixture tears down
+    respx *before* ``os2mo_database_snapshot_and_restore`` runs its restore
+    request, which would close the transport of a client created by authlib.
+    Using a plain ``httpx.AsyncClient`` with a pre-fetched bearer token avoids
+    this entirely.
     """
     settings = _load_settings()
-    client = AsyncOAuth2Client(
-        base_url=settings.mo_url,
-        client_id=settings.client_id,
-        client_secret=settings.client_secret.get_secret_value(),
-        grant_type="client_credentials",
-        token_endpoint=(
+
+    async with httpx.AsyncClient() as token_client:
+        resp = await token_client.post(
             f"{settings.auth_server}/realms/{settings.auth_realm}"
-            "/protocol/openid-connect/token"
-        ),
-        token={"expires_at": -1, "access_token": ""},
+            "/protocol/openid-connect/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": settings.client_id,
+                "client_secret": settings.client_secret.get_secret_value(),
+            },
+        )
+        resp.raise_for_status()
+        access_token = resp.json()["access_token"]
+
+    client = AsyncClient(
+        base_url=settings.mo_url,
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     async with client:
         yield client
