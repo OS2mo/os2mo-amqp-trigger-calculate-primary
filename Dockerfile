@@ -20,7 +20,7 @@ COPY poetry.lock pyproject.toml ./
 
 # Install project in another isolated environment
 RUN python -m venv $VIRTUAL_ENV
-RUN poetry install --no-root --only=main
+RUN poetry install --no-root
 
 WORKDIR /app
 
