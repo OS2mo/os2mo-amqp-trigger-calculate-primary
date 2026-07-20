@@ -10,6 +10,7 @@ from calculate_primary.common import MOPrimaryEngagementUpdater
 logger = structlog.stdlib.get_logger()
 
 
+# MARK: test
 # This function has been copied directly from the SD-integration repo as
 # it was missing when the SD-integration was moved to its own repo. Ideally,
 # it should have been moved to a library and used both in DIPEX and in the
@@ -17,7 +18,7 @@ logger = structlog.stdlib.get_logger()
 # unlikely that it will be removed from the SD-integration anyway as this
 # integration should not have the responsibility of calculating primary
 # engagements
-def get_primary_types(helper):
+def get_primary_types(helper):  # MARK: used
     """
     Read the engagement types from MO and match them up against the four
     known types in the SD->MO import.
@@ -89,7 +90,7 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
             remove_missing_user_key,
         ]
 
-    def _find_primary_types(self):
+    def _find_primary_types(self):  # MARK: used
         # Keys are; fixed_primary, primary and non-primary
         primary_types = get_primary_types(self.helper)
         primary = [

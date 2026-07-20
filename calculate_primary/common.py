@@ -62,7 +62,7 @@ def noop(*args, **kwargs):
 
 
 class MOPrimaryEngagementUpdater(ABC):
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings):  # MARK: used
         self.settings = settings
         self.helper = self._get_mora_helper(settings)
 
@@ -73,7 +73,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         self.primary_types, self.primary = self._find_primary_types()
 
-    def _get_mora_helper(self, settings: Settings):
+    def _get_mora_helper(self, settings: Settings):  # MARK: used
         """Construct a MoraHelper object."""
         return MoraHelper(
             hostname=settings.fastramqpi.mo_url,
@@ -84,7 +84,7 @@ class MOPrimaryEngagementUpdater(ABC):
             use_cache=False,
         )
 
-    def _read_engagement(self, user_uuid, date):
+    def _read_engagement(self, user_uuid, date):  # MARK: used
         """Fetch all engagements for user_uuid at date."""
         mo_engagements = self.helper.read_user_engagements(
             user=user_uuid,
@@ -189,7 +189,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         return engagement_count, primary_count, filtered_primary_count
 
-    def _check_user(self, check_filters, user_uuid):
+    def _check_user(self, check_filters, user_uuid):  # MARK: used
         """Check the users primary engagement(s).
 
         Args:
@@ -322,7 +322,7 @@ class MOPrimaryEngagementUpdater(ABC):
             return primary, "primary"
         raise NoPrimaryFound()
 
-    def _ensure_primary(self, engagement, primary_type_uuid, validity):
+    def _ensure_primary(self, engagement, primary_type_uuid, validity):  # MARK: used
         """Ensure that engagement has the right primary_type.
 
         Assuming the engagement already has the correct primary_type this method
@@ -362,7 +362,10 @@ class MOPrimaryEngagementUpdater(ABC):
                 return False
         return True
 
-    def recalculate_user(self, user_uuid: Union[UUID, str], no_past=False):
+    # MARK: test
+    def recalculate_user(
+        self, user_uuid: Union[UUID, str], no_past=False
+    ):  # MARK: used
         """(Re)calculate primary engagement for the entire history the user."""
         user_uuid = str(user_uuid)
 

@@ -25,7 +25,7 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
             remove_missing_user_key,
         ]
 
-    def _find_primary_types(self):
+    def _find_primary_types(self):  # MARK: used
         """
         Read the engagement types from MO and match them up against the three
         known types in the OPUS->MO import.
