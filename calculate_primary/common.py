@@ -4,7 +4,6 @@
 import datetime
 from abc import ABC
 from abc import abstractmethod
-from functools import lru_cache
 from functools import partial
 from operator import itemgetter
 from typing import Union
@@ -16,7 +15,6 @@ from more_itertools import only
 from more_itertools import pairwise
 from os2mo_helpers.mora_helpers import MoraHelper
 from ra_utils.deprecation import deprecated
-from ra_utils.tqdm_wrapper import tqdm
 
 from calculate_primary.config import Settings
 
@@ -85,34 +83,6 @@ class MOPrimaryEngagementUpdater(ABC):
             auth_realm=settings.fastramqpi.auth_realm,
             use_cache=False,
         )
-
-    def _get_person(self, cpr=None, uuid=None, mo_person=None):
-        """Fetch a person from MO.
-
-        Only one of the given parameters should be given, if multiple are given
-        UUID takes priority over CPR which in turn takes priority over mo_person.
-
-        Args:
-            cpr: The CPR number of the person.
-            uuid: The MO uuid of the person.
-            mo_person: An existing user object from MoraHelper.
-
-        Returns:
-            user object from MoraHelper.
-        """
-
-        @lru_cache(maxsize=None)
-        def _get_org_uuid():
-            org_uuid = self.helper.read_organisation()
-            return org_uuid
-
-        if uuid:
-            mo_person = self.helper.read_user(user_uuid=uuid)
-        elif cpr:
-            mo_person = self.helper.read_user(
-                user_cpr=cpr, org_uuid=self._get_org_uuid()
-            )
-        return mo_person
 
     def _read_engagement(self, user_uuid, date):
         """Fetch all engagements for user_uuid at date."""
@@ -481,37 +451,3 @@ class MOPrimaryEngagementUpdater(ABC):
 
         return_dict = {user_uuid: number_of_edits}
         return return_dict
-
-    def check_all(self):
-        """Check all users for the existence of primary engagements."""
-        print("Reading all users from MO...")
-        all_users = self.helper.read_all_users()
-        print("OK")
-        for user in tqdm(all_users):
-            self.check_user(user["uuid"])
-
-    def recalculate_all(self, no_past=False):
-        """Recalculate all users primary engagements."""
-        print("Reading all users from MO...")
-        all_users = self.helper.read_all_users()
-        print("OK")
-        edit_status = {}
-        all_users = tqdm(all_users)
-        all_users = map(itemgetter("uuid"), all_users)
-        for user_uuid in all_users:
-            try:
-                status = self.recalculate_user(user_uuid, no_past=no_past)
-                edit_status.update(status)
-            except MultipleFixedPrimaries:
-                print("{} has conflicting fixed primaries".format(user_uuid))
-            except Exception as exp:
-                print("Exception while processing {}: {}".format(user_uuid, exp))
-
-        total_non_edits = 0
-        total_edits = 0
-        for number_of_edits in edit_status.values():
-            if number_of_edits == 0:
-                total_non_edits += 1
-            total_edits += number_of_edits
-        print("Total non-edits: {}".format(total_non_edits))
-        print("Total edits: {}".format(total_edits))
