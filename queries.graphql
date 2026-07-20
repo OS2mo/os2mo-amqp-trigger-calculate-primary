@@ -12,3 +12,54 @@ query GetEngagementPerson($uuid: UUID!) {
     }
   }
 }
+
+query GetEngagements($uuids: [UUID!]!) {
+  engagements(filter: { uuids: $uuids, from_date: null, to_date: null }) {
+    objects {
+      validities(start: null, end: null) {
+        uuid
+        user_key
+        is_primary
+        primary {
+          uuid
+          user_key
+        }
+      }
+    }
+  }
+}
+
+query GetPrimaryTypes {
+  classes(filter: { facet: { user_keys: ["primary_type"] } }) {
+    objects {
+      validities {
+        uuid
+        user_key
+      }
+    }
+  }
+}
+
+mutation _Testing_CreateEmployee($input: EmployeeCreateInput!) {
+  employee_create(input: $input) {
+    uuid
+  }
+}
+
+mutation _Testing_CreateEngagement($input: EngagementCreateInput!) {
+  engagement_create(input: $input) {
+    uuid
+  }
+}
+
+mutation _Testing_CreateOrgUnit($input: OrganisationUnitCreateInput!) {
+  org_unit_create(input: $input) {
+    uuid
+  }
+}
+
+mutation _Testing_UpdateEngagement($input: EngagementUpdateInput!) {
+  engagement_update(input: $input) {
+    uuid
+  }
+}
