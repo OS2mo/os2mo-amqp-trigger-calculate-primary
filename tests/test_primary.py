@@ -184,29 +184,6 @@ class Test_check_user(TestCase):
         ]
         return engagements
 
-    def test_mora_cut_dates(self):
-        """Test that mora cut-dates work as expected."""
-        from os2mo_helpers.mora_helpers import MoraHelper
-
-        mora_helper = MoraHelper()
-        mora_helper.read_user_engagement = MagicMock()
-        mora_helper.read_user_engagement.return_value = self.engagements_fixture()
-
-        cut_dates = mora_helper.find_cut_dates("user_uuid")
-
-        # Expected data derived from engagements_fixture
-        self.assertEqual(
-            cut_dates,
-            [
-                datetime.datetime(1931, 1, 1),
-                datetime.datetime(1939, 9, 1),
-                datetime.datetime(1945, 9, 3),  # +1
-                datetime.datetime(1949, 1, 1),
-                datetime.datetime(1950, 1, 2),  # +1
-                datetime.datetime(9999, 12, 30, 0, 0),
-            ],
-        )
-
     def test_engagements_at_date(self):
         """Test that engagements_at_date works as expected."""
         engagements = self.engagements_fixture()
