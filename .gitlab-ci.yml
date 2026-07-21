@@ -68,4 +68,3 @@ Integration-test:
     - .integration-test:mo
   rules:
     - <<: *if-merge-request
-  parallel: 1
