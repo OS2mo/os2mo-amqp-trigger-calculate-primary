@@ -2,10 +2,12 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 import datetime
+from typing import Any
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.model import ClassDict
 
 logger = structlog.stdlib.get_logger()
 
@@ -51,7 +53,9 @@ def get_primary_types(helper):
     non_primary = None
     fixed_primary = None
 
-    primary_types = helper.read_classes_in_facet("primary_type")
+    primary_types: tuple[list[ClassDict], Any] = helper.read_classes_in_facet(
+        "primary_type"
+    )
     for primary_type in primary_types[0]:
         if primary_type["user_key"] == PRIMARY:
             primary = primary_type["uuid"]

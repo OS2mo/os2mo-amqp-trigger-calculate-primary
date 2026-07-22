@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-import datetime
 from abc import ABC
 from abc import abstractmethod
+from datetime import datetime
+from datetime import timedelta
 from functools import partial
 from operator import itemgetter
-from typing import Union
 from uuid import UUID
 
 import structlog
@@ -16,6 +16,9 @@ from more_itertools import pairwise
 from os2mo_helpers.mora_helpers import MoraHelper
 
 from calculate_primary.config import Settings
+from calculate_primary.model import EngagementDict
+from calculate_primary.model import EngagementEditPayload
+from calculate_primary.model import ValidityDict
 
 logger = structlog.stdlib.get_logger()
 
@@ -83,7 +86,7 @@ class MOPrimaryEngagementUpdater(ABC):
             use_cache=False,
         )
 
-    def _read_engagement(self, user_uuid, date):
+    def _read_engagement(self, user_uuid: str, date: datetime) -> list[EngagementDict]:
         """Fetch all engagements for user_uuid at date."""
         mo_engagements = self.helper.read_user_engagements(
             user=user_uuid,
@@ -151,7 +154,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return True
         return False
 
-    def _count_primary_engagements(self, check_filters, user_uuid, mo_engagements):
+    def _count_primary_engagements(
+        self, check_filters, user_uuid, mo_engagements: list[EngagementDict]
+    ):
         """Count number of primaries.
 
         Args:
@@ -201,7 +206,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 value: A 3-tuple, from _count_primary_engagements.
         """
         # List of cut dates, excluding the very last one
-        date_list = self.helper.find_cut_dates(uuid=user_uuid)
+        date_list: list[datetime] = self.helper.find_cut_dates(uuid=user_uuid)
         date_list = date_list[:-1]
         # Map all our dates, to their corresponding engagements.
         mo_engagements = map(partial(self._read_engagement, user_uuid), date_list)
@@ -300,7 +305,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return primary, "primary"
         raise NoPrimaryFound()
 
-    def _ensure_primary(self, engagement, primary_type_uuid, validity):
+    def _ensure_primary(
+        self, engagement: EngagementDict, primary_type_uuid: str, validity
+    ) -> bool:
         """Ensure that engagement has the right primary_type.
 
         Assuming the engagement already has the correct primary_type this method
@@ -324,7 +331,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # At this point, we know that we have to update the engagement, thus we
         # construct an update payload and send it to MO.
-        payload = {
+        payload: EngagementEditPayload = {
             "type": "engagement",
             "uuid": engagement["uuid"],
             "data": {"primary": {"uuid": primary_type_uuid}, "validity": validity},
@@ -340,17 +347,17 @@ class MOPrimaryEngagementUpdater(ABC):
                 return False
         return True
 
-    def recalculate_user(self, user_uuid: Union[UUID, str], no_past=False):
+    def recalculate_user(self, user_uuid: UUID | str, no_past=False) -> dict[str, int]:
         """(Re)calculate primary engagement for the entire history the user."""
         user_uuid = str(user_uuid)
 
-        def fetch_mo_engagements(date):
+        def fetch_mo_engagements(date: datetime) -> list[EngagementDict]:
             """Fetch engagements which are active at 'date' and fulfill our filters.
 
             Also ensures that the 'primary' attribute is set on all engagements.
             """
 
-            def ensure_primary(engagement):
+            def ensure_primary(engagement: EngagementDict) -> EngagementDict:
                 """Ensure that engagement has a primary field."""
                 # TODO: It would seem this happens for leaves, should we make a
                 #       special type for this?
@@ -372,17 +379,15 @@ class MOPrimaryEngagementUpdater(ABC):
 
             return mo_engagements
 
-        def calculate_validity(start, end):
+        def calculate_validity(start: datetime, end: datetime) -> ValidityDict:
             """Construct engagement primarity validity from start and end date."""
-            to = datetime.datetime.strftime(
-                end - datetime.timedelta(days=1), "%Y-%m-%d"
-            )
+            to: str | None = datetime.strftime(end - timedelta(days=1), "%Y-%m-%d")
             # Sentinel value for infinity is usually 9999-12-30 / 9999-12-31.
             # We assume anything above 9999-1-1 is sentinel value for infinity.
-            if end >= datetime.datetime(9999, 1, 1, 0, 0):
+            if end >= datetime(9999, 1, 1, 0, 0):
                 to = None
-            validity = {
-                "from": datetime.datetime.strftime(start, "%Y-%m-%d"),
+            validity: ValidityDict = {
+                "from": datetime.strftime(start, "%Y-%m-%d"),
                 "to": to,
             }
             return validity
@@ -392,7 +397,9 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # Find a list of dates with changes in engagement, and for each change
         # decide which engagement is the primary between that and the next change.
-        date_list = self.helper.find_cut_dates(user_uuid, no_past=no_past)
+        date_list: list[datetime] = self.helper.find_cut_dates(
+            user_uuid, no_past=no_past
+        )
         for start, end in pairwise(date_list):
             logger.info("Recalculate primary, date: {}".format(start))
 

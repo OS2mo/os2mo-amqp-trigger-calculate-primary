@@ -2,10 +2,13 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 import datetime
+from typing import Any
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.model import ClassDict
+from calculate_primary.model import EngagementDict
 
 logger = structlog.stdlib.get_logger()
 
@@ -36,9 +39,15 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         FIXED_PRIMARY = "explicitly-primary"
 
         logger.info("Read primary types")
-        primary_dict = {"fixed_primary": None, "primary": None, "non_primary": None}
+        primary_dict: dict[str, str | None] = {
+            "fixed_primary": None,
+            "primary": None,
+            "non_primary": None,
+        }
 
-        primary_types = self.helper.read_classes_in_facet("primary_type")
+        primary_types: tuple[list[ClassDict], Any] = self.helper.read_classes_in_facet(
+            "primary_type"
+        )
         for primary_type in primary_types[0]:
             if primary_type["user_key"] == PRIMARY:
                 primary_dict["primary"] = primary_type["uuid"]
@@ -53,7 +62,7 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
         return primary_dict, primary_list
 
-    def _find_primary(self, mo_engagements):
+    def _find_primary(self, mo_engagements: list[EngagementDict]):
         if not mo_engagements:
             return None
 
