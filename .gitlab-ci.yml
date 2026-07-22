@@ -35,6 +35,9 @@ variables:
   if: '$CI_MERGE_REQUEST_IID'
 
 include:
+  - project: rammearkitektur/os2mo
+    file:
+      - gitlab-ci-templates/integration-test-meta.v1.yml
   - project: labs/salt-automation
     file:
       - gitlab-ci-templates/common/no-interrupt-meta.v1.yml
@@ -42,11 +45,8 @@ include:
       - gitlab-ci-templates/common/docker-build.v1.yml
       - gitlab-ci-templates/common/docker-release.v1.yml
       - gitlab-ci-templates/common/config-updater-salt.v1.yml
-
-  - project: labs/salt-automation
-    file:
       - gitlab-ci-templates/common/pre-commit.v1.yml
-      - gitlab-ci-templates/python/pytest-meta.v1.yml
+      - gitlab-ci-templates/python/pytest.v1.yml
 
 workflow:
   rules:
@@ -59,22 +59,12 @@ workflow:
     - <<: *if-default-branch-refs
     - <<: *if-merge-request
 
-
-
 Test:
-  extends: .pytest
-  image: python:3.9
-  rules:
-    - <<: *if-merge-request
+  variables:
+    PYTEST_ADDOPTS: "-m 'not integration_test'"
 
-Export coverage:
-  extends: .export_coverage
-  needs: [Test]
-  rules:
-    - <<: *if-merge-request
-
-Check coverage:
-  extends: .check_coverage
-  needs: [Test]
+Integration-test:
+  extends:
+    - .integration-test:mo
   rules:
     - <<: *if-merge-request

@@ -16,6 +16,7 @@ services:
       INTEGRATION: DEFAULT
 
     networks:
+      - default
       - os2mo_default
     volumes:
       - .:/app
