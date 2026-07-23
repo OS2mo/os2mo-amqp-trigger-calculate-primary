@@ -16,6 +16,37 @@ query _Testing_GetEngagement($uuid: UUID!) {
   }
 }
 
+query _Testing_GetEmployeeEngagements($uuid: UUID!) {
+  engagements(
+    filter: { employee: { uuids: [$uuid] }, from_date: null, to_date: null }
+  ) {
+    objects {
+      validities(start: null, end: null) {
+        uuid
+        validity {
+          from
+          to
+        }
+        primary_response {
+          validities(start: null, end: null) {
+            uuid
+          }
+        }
+      }
+    }
+  }
+}
+
+query _Testing_GetFacetByUserKey($user_key: String!) {
+  facets(filter: { user_keys: [$user_key], from_date: null, to_date: null }) {
+    objects {
+      validities {
+        uuid
+      }
+    }
+  }
+}
+
 mutation _Testing_CreateEmployee($input: EmployeeCreateInput!) {
   employee_create(input: $input) {
     uuid
