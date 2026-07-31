@@ -237,9 +237,7 @@ async def test_mo_post(
     res = await mora_helper._mo_post("details/edit", payload)
     assert res.status_code == 200
 
-    engagements = await graphql_client._testing__get_employee_engagements(
-        default_employee.uuid
-    )
+    engagements = await graphql_client.get_employee_engagements(default_employee.uuid)
     obj = one(engagements.objects)
     validities = sorted(obj.validities, key=lambda eng: eng.validity.from_)
     e0, e1, e2 = validities
