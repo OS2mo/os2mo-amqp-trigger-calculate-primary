@@ -1,7 +1,11 @@
+from ._testing__create_class import TestingCreateClass
+from ._testing__create_class import TestingCreateClassClassCreate
 from ._testing__create_employee import TestingCreateEmployee
 from ._testing__create_employee import TestingCreateEmployeeEmployeeCreate
 from ._testing__create_engagement import TestingCreateEngagement
 from ._testing__create_engagement import TestingCreateEngagementEngagementCreate
+from ._testing__create_facet import TestingCreateFacet
+from ._testing__create_facet import TestingCreateFacetFacetCreate
 from ._testing__create_org_unit import TestingCreateOrgUnit
 from ._testing__create_org_unit import TestingCreateOrgUnitOrgUnitCreate
 from ._testing__get_engagement import TestingGetEngagement
@@ -315,10 +319,14 @@ __all__ = [
     "RoleBindingTerminateInput",
     "RoleBindingUpdateInput",
     "RoleRegistrationFilter",
+    "TestingCreateClass",
+    "TestingCreateClassClassCreate",
     "TestingCreateEmployee",
     "TestingCreateEmployeeEmployeeCreate",
     "TestingCreateEngagement",
     "TestingCreateEngagementEngagementCreate",
+    "TestingCreateFacet",
+    "TestingCreateFacetFacetCreate",
     "TestingCreateOrgUnit",
     "TestingCreateOrgUnitOrgUnitCreate",
     "TestingGetEngagement",

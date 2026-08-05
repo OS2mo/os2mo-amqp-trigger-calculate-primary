@@ -1,9 +1,13 @@
 from uuid import UUID
 
+from ._testing__create_class import TestingCreateClass
+from ._testing__create_class import TestingCreateClassClassCreate
 from ._testing__create_employee import TestingCreateEmployee
 from ._testing__create_employee import TestingCreateEmployeeEmployeeCreate
 from ._testing__create_engagement import TestingCreateEngagement
 from ._testing__create_engagement import TestingCreateEngagementEngagementCreate
+from ._testing__create_facet import TestingCreateFacet
+from ._testing__create_facet import TestingCreateFacetFacetCreate
 from ._testing__create_org_unit import TestingCreateOrgUnit
 from ._testing__create_org_unit import TestingCreateOrgUnitOrgUnitCreate
 from ._testing__get_engagement import TestingGetEngagement
@@ -15,9 +19,11 @@ from ._testing__update_engagement import TestingUpdateEngagementEngagementUpdate
 from .async_base_client import AsyncBaseClient
 from .get_engagement_person import GetEngagementPerson
 from .get_engagement_person import GetEngagementPersonEngagements
+from .input_types import ClassCreateInput
 from .input_types import EmployeeCreateInput
 from .input_types import EngagementCreateInput
 from .input_types import EngagementUpdateInput
+from .input_types import FacetCreateInput
 from .input_types import OrganisationUnitCreateInput
 
 
@@ -160,3 +166,37 @@ class GraphQLClient(AsyncBaseClient):
         response = await self.execute(query=query, variables=variables)
         data = self.get_data(response)
         return TestingUpdateEngagement.parse_obj(data).engagement_update
+
+    async def _testing__create_facet(
+        self, input: FacetCreateInput
+    ) -> TestingCreateFacetFacetCreate:
+        query = gql(
+            """
+            mutation _Testing_CreateFacet($input: FacetCreateInput!) {
+              facet_create(input: $input) {
+                uuid
+              }
+            }
+            """
+        )
+        variables: dict[str, object] = {"input": input}
+        response = await self.execute(query=query, variables=variables)
+        data = self.get_data(response)
+        return TestingCreateFacet.parse_obj(data).facet_create
+
+    async def _testing__create_class(
+        self, input: ClassCreateInput
+    ) -> TestingCreateClassClassCreate:
+        query = gql(
+            """
+            mutation _Testing_CreateClass($input: ClassCreateInput!) {
+              class_create(input: $input) {
+                uuid
+              }
+            }
+            """
+        )
+        variables: dict[str, object] = {"input": input}
+        response = await self.execute(query=query, variables=variables)
+        data = self.get_data(response)
+        return TestingCreateClass.parse_obj(data).class_create
