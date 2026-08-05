@@ -10,8 +10,12 @@ from ._testing__create_facet import TestingCreateFacet
 from ._testing__create_facet import TestingCreateFacetFacetCreate
 from ._testing__create_org_unit import TestingCreateOrgUnit
 from ._testing__create_org_unit import TestingCreateOrgUnitOrgUnitCreate
+from ._testing__get_employee_engagements import TestingGetEmployeeEngagements
+from ._testing__get_employee_engagements import TestingGetEmployeeEngagementsEngagements
 from ._testing__get_engagement import TestingGetEngagement
 from ._testing__get_engagement import TestingGetEngagementEngagements
+from ._testing__get_facet_by_user_key import TestingGetFacetByUserKey
+from ._testing__get_facet_by_user_key import TestingGetFacetByUserKeyFacets
 from ._testing__update_engagement import TestingUpdateEngagement
 from ._testing__update_engagement import TestingUpdateEngagementEngagementUpdate
 from .async_base_client import AsyncBaseClient
@@ -76,6 +80,59 @@ class GraphQLClient(AsyncBaseClient):
         response = await self.execute(query=query, variables=variables)
         data = self.get_data(response)
         return TestingGetEngagement.parse_obj(data).engagements
+
+    async def _testing__get_employee_engagements(
+        self, uuid: UUID
+    ) -> TestingGetEmployeeEngagementsEngagements:
+        query = gql(
+            """
+            query _Testing_GetEmployeeEngagements($uuid: UUID!) {
+              engagements(
+                filter: {employee: {uuids: [$uuid]}, from_date: null, to_date: null}
+              ) {
+                objects {
+                  validities(start: null, end: null) {
+                    uuid
+                    validity {
+                      from
+                      to
+                    }
+                    primary_response {
+                      validities(start: null, end: null) {
+                        uuid
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+        )
+        variables: dict[str, object] = {"uuid": uuid}
+        response = await self.execute(query=query, variables=variables)
+        data = self.get_data(response)
+        return TestingGetEmployeeEngagements.parse_obj(data).engagements
+
+    async def _testing__get_facet_by_user_key(
+        self, user_key: str
+    ) -> TestingGetFacetByUserKeyFacets:
+        query = gql(
+            """
+            query _Testing_GetFacetByUserKey($user_key: String!) {
+              facets(filter: {user_keys: [$user_key], from_date: null, to_date: null}) {
+                objects {
+                  validities {
+                    uuid
+                  }
+                }
+              }
+            }
+            """
+        )
+        variables: dict[str, object] = {"user_key": user_key}
+        response = await self.execute(query=query, variables=variables)
+        data = self.get_data(response)
+        return TestingGetFacetByUserKey.parse_obj(data).facets
 
     async def _testing__create_employee(
         self, input: EmployeeCreateInput
