@@ -12,8 +12,6 @@ from ._testing__create_org_unit import TestingCreateOrgUnit
 from ._testing__create_org_unit import TestingCreateOrgUnitOrgUnitCreate
 from ._testing__get_engagement import TestingGetEngagement
 from ._testing__get_engagement import TestingGetEngagementEngagements
-from ._testing__get_primary_types import TestingGetPrimaryTypes
-from ._testing__get_primary_types import TestingGetPrimaryTypesClasses
 from ._testing__update_engagement import TestingUpdateEngagement
 from ._testing__update_engagement import TestingUpdateEngagementEngagementUpdate
 from .async_base_client import AsyncBaseClient
@@ -78,26 +76,6 @@ class GraphQLClient(AsyncBaseClient):
         response = await self.execute(query=query, variables=variables)
         data = self.get_data(response)
         return TestingGetEngagement.parse_obj(data).engagements
-
-    async def _testing__get_primary_types(self) -> TestingGetPrimaryTypesClasses:
-        query = gql(
-            """
-            query _Testing_GetPrimaryTypes {
-              classes(filter: {facet: {user_keys: ["primary_type"]}}) {
-                objects {
-                  validities {
-                    uuid
-                    user_key
-                  }
-                }
-              }
-            }
-            """
-        )
-        variables: dict[str, object] = {}
-        response = await self.execute(query=query, variables=variables)
-        data = self.get_data(response)
-        return TestingGetPrimaryTypes.parse_obj(data).classes
 
     async def _testing__create_employee(
         self, input: EmployeeCreateInput

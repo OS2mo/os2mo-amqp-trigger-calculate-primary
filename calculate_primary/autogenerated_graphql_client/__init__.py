@@ -18,10 +18,6 @@ from ._testing__get_engagement import (
 from ._testing__get_engagement import (
     TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponseValidities,
 )
-from ._testing__get_primary_types import TestingGetPrimaryTypes
-from ._testing__get_primary_types import TestingGetPrimaryTypesClasses
-from ._testing__get_primary_types import TestingGetPrimaryTypesClassesObjects
-from ._testing__get_primary_types import TestingGetPrimaryTypesClassesObjectsValidities
 from ._testing__update_engagement import TestingUpdateEngagement
 from ._testing__update_engagement import TestingUpdateEngagementEngagementUpdate
 from .async_base_client import AsyncBaseClient
@@ -335,10 +331,6 @@ __all__ = [
     "TestingGetEngagementEngagementsObjectsValidities",
     "TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponse",
     "TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponseValidities",
-    "TestingGetPrimaryTypes",
-    "TestingGetPrimaryTypesClasses",
-    "TestingGetPrimaryTypesClassesObjects",
-    "TestingGetPrimaryTypesClassesObjectsValidities",
     "TestingUpdateEngagement",
     "TestingUpdateEngagementEngagementUpdate",
     "UuidsBoundClassFilter",
