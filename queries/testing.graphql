@@ -16,17 +16,6 @@ query _Testing_GetEngagement($uuid: UUID!) {
   }
 }
 
-query _Testing_GetPrimaryTypes {
-  classes(filter: { facet: { user_keys: ["primary_type"] } }) {
-    objects {
-      validities {
-        uuid
-        user_key
-      }
-    }
-  }
-}
-
 mutation _Testing_CreateEmployee($input: EmployeeCreateInput!) {
   employee_create(input: $input) {
     uuid
