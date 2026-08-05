@@ -2,8 +2,10 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 """Event-driven recalculate primary program."""
+
 from uuid import UUID
 
+from os2mo_helpers.mora_helpers import MoraHelper
 from prometheus_client import Counter
 from prometheus_client import Gauge
 
@@ -53,6 +55,14 @@ def _setup_updater(settings: Settings) -> MOPrimaryEngagementUpdater:
     print(f"Acquiring updater: {settings.integration}")
     updater_class = get_engagement_updater(settings.integration)
     print(f"Got class: {updater_class}")
-    updater: MOPrimaryEngagementUpdater = updater_class(settings)
+    mora_helper = MoraHelper(
+        hostname=settings.fastramqpi.mo_url,
+        auth_server=settings.fastramqpi.auth_server,
+        client_id=settings.fastramqpi.client_id,
+        client_secret=settings.fastramqpi.client_secret.get_secret_value(),
+        auth_realm=settings.fastramqpi.auth_realm,
+        use_cache=False,
+    )
+    updater: MOPrimaryEngagementUpdater = updater_class(settings, mora_helper)
     print(f"Got object: {updater}")
     return updater

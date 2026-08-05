@@ -11,10 +11,10 @@ from calculate_primary.sd import SDPrimaryEngagementUpdater
 class SDPrimaryEngagementUpdaterTest(SDPrimaryEngagementUpdater):
     # copied from test_primary but without overwriting _find_primary
 
-    def _get_mora_helper(self, mora_base):
-        morahelper_mock = MagicMock()
-        morahelper_mock.read_organisation.return_value = "org_uuid"
-        return morahelper_mock
+    def __init__(self, settings):
+        helper = MagicMock()
+        helper.read_organisation.return_value = "org_uuid"
+        super().__init__(settings, helper)
 
     def _find_primary_types(self):
         primary_dict = {

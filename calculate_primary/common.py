@@ -64,9 +64,9 @@ def noop(*args, **kwargs):
 
 
 class MOPrimaryEngagementUpdater(ABC):
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, mora_helper: MoraHelper):
         self.settings = settings
-        self.helper = self._get_mora_helper(settings)
+        self.helper = mora_helper
 
         # List of engagement filters to apply to check / recalculate respectively
         # NOTE: Should be overridden by subclasses
@@ -74,17 +74,6 @@ class MOPrimaryEngagementUpdater(ABC):
         self.calculate_filters = []
 
         self.primary_types, self.primary = self._find_primary_types()
-
-    def _get_mora_helper(self, settings: Settings):
-        """Construct a MoraHelper object."""
-        return MoraHelper(
-            hostname=settings.fastramqpi.mo_url,
-            auth_server=settings.fastramqpi.auth_server,
-            client_id=settings.fastramqpi.client_id,
-            client_secret=settings.fastramqpi.client_secret.get_secret_value(),
-            auth_realm=settings.fastramqpi.auth_realm,
-            use_cache=False,
-        )
 
     def _read_engagement(self, user_uuid: str, date: datetime) -> list[EngagementDict]:
         """Fetch all engagements for user_uuid at date."""

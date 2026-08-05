@@ -60,10 +60,10 @@ def engagements_at_date(date, engagements):
 
 
 class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
-    def _get_mora_helper(self, mora_base):
+    def __init__(self, settings):
         helper = MagicMock()
         helper.read_organisation.return_value = "org_uuid"
-        return helper
+        super().__init__(settings, helper)
 
     def _find_primary_types(self):
         primary_dict = {
