@@ -50,3 +50,15 @@ mutation _Testing_UpdateEngagement($input: EngagementUpdateInput!) {
     uuid
   }
 }
+
+mutation _Testing_CreateFacet($input: FacetCreateInput!) {
+  facet_create(input: $input) {
+    uuid
+  }
+}
+
+mutation _Testing_CreateClass($input: ClassCreateInput!) {
+  class_create(input: $input) {
+    uuid
+  }
+}
