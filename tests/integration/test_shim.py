@@ -235,7 +235,7 @@ async def test_mo_post(
         },
     }
     res = await mora_helper._mo_post("details/edit", payload)
-    res.raise_for_status()
+    assert res.status_code == 200
 
     engagements = await graphql_client._testing__get_employee_engagements(
         default_employee.uuid
