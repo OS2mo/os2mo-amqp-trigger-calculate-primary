@@ -22,6 +22,7 @@ variables:
   PYTEST_COV_MODULE: calculate_primary
   PYTEST_COV_FAIL_UNDER: 0
   POETRY_VERSION: 1.8.3
+  PRECOMMIT_USE_POETRY: "true"
 
 
 # Global Conditions

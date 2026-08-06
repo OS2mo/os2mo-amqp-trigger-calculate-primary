@@ -29,6 +29,7 @@ pytest = "^8.4.2"
 [tool.poetry.group.pre-commit.dependencies]
 pre-commit = "^3.8.0"
 ruff = "^0.5.6"
+deptry = "^0.25.1"
 
 
 [build-system]
@@ -74,3 +75,9 @@ extend-select = ["I"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+  # uvicorn is used by the Dockerfile
+  "uvicorn",
+]
