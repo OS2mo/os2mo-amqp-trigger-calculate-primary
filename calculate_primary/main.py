@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: MPL-2.0
 """Event-driven recalculate primary program."""
 
+from contextlib import asynccontextmanager
 from uuid import UUID
 
+from fastramqpi.main import FastRAMQPI
 from os2mo_helpers.mora_helpers import MoraHelper
 from prometheus_client import Counter
 from prometheus_client import Gauge
@@ -43,15 +45,13 @@ def calculate_user(updater: MOPrimaryEngagementUpdater, uuid: UUID) -> None:
         edit_counter.inc(number_of_edits)
 
 
-def _setup_updater(settings: Settings) -> MOPrimaryEngagementUpdater:
-    """Exchange integration to updater.
-
-    Args:
-        settings
-
-    Returns:
-        The constructed updater.
+@asynccontextmanager
+async def setup_updater(settings: Settings, fastramqpi: FastRAMQPI):
     """
+    Instantiates the correct updater implementation, based on what is configured
+    in `settings.integration`.
+    """
+
     print(f"Acquiring updater: {settings.integration}")
     updater_class = get_engagement_updater(settings.integration)
     print(f"Got class: {updater_class}")
@@ -65,4 +65,6 @@ def _setup_updater(settings: Settings) -> MOPrimaryEngagementUpdater:
     )
     updater: MOPrimaryEngagementUpdater = updater_class(settings, mora_helper)
     print(f"Got object: {updater}")
-    return updater
+    fastramqpi.add_context(updater=updater)
+
+    yield
