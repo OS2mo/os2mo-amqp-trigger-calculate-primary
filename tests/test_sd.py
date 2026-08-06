@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 from calculate_primary.sd import SDPrimaryEngagementUpdater
@@ -11,12 +11,13 @@ from calculate_primary.sd import SDPrimaryEngagementUpdater
 class SDPrimaryEngagementUpdaterTest(SDPrimaryEngagementUpdater):
     # copied from test_primary but without overwriting _find_primary
 
-    def __init__(self, settings):
-        helper = MagicMock()
-        helper.read_organisation.return_value = "org_uuid"
-        super().__init__(settings, helper)
+    @classmethod
+    async def create(cls, settings, mora_helper: AsyncMock):
+        this = await super().create(settings, mora_helper)
+        this.helper.read_organisation.return_value = "org_uuid"
+        return this
 
-    def _find_primary_types(self):
+    async def _find_primary_types(self):
         primary_dict = {
             "fixed_primary": "fixed_primary_uuid",
             "primary": "primary_uuid",
@@ -35,10 +36,9 @@ class ResponseOK:
     status_code = 200
 
 
-def test_sd_non_integer_user_key(dummy_settings):
+async def test_sd_non_integer_user_key(dummy_settings):
     # Arrange
-    updater = SDPrimaryEngagementUpdaterTest(dummy_settings)
-    updater.helper = MagicMock()
+    updater = await SDPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = ResponseOK()
     uuid_primary_engagement = str(uuid4())
     mo_engagements = [
@@ -54,8 +54,8 @@ def test_sd_non_integer_user_key(dummy_settings):
         },
     ]
 
-    updater._read_engagement = MagicMock(return_value=mo_engagements)
-    updater.helper.find_cut_dates = MagicMock(
+    updater._read_engagement = AsyncMock(return_value=mo_engagements)
+    updater.helper.find_cut_dates = AsyncMock(
         return_value=(
             datetime.fromisoformat("2024-01-14"),
             datetime.max,
@@ -63,7 +63,7 @@ def test_sd_non_integer_user_key(dummy_settings):
     )
 
     # Act
-    updater.recalculate_user("User_uuid")
+    await updater.recalculate_user("User_uuid")
 
     # Assert
     updater.helper._mo_post.assert_called_once_with(
@@ -79,10 +79,9 @@ def test_sd_non_integer_user_key(dummy_settings):
     )
 
 
-def test_sd_non_integer_user_key_only_engagement(dummy_settings):
+async def test_sd_non_integer_user_key_only_engagement(dummy_settings):
     # Arrange
-    updater = SDPrimaryEngagementUpdaterTest(dummy_settings)
-    updater.helper = MagicMock()
+    updater = await SDPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = ResponseOK()
     uuid_primary_engagement = str(uuid4())
     mo_engagements = [
@@ -93,8 +92,8 @@ def test_sd_non_integer_user_key_only_engagement(dummy_settings):
         },
     ]
 
-    updater._read_engagement = MagicMock(return_value=mo_engagements)
-    updater.helper.find_cut_dates = MagicMock(
+    updater._read_engagement = AsyncMock(return_value=mo_engagements)
+    updater.helper.find_cut_dates = AsyncMock(
         return_value=(
             datetime.fromisoformat("2024-01-14"),
             datetime.max,
@@ -102,7 +101,7 @@ def test_sd_non_integer_user_key_only_engagement(dummy_settings):
     )
 
     # Act
-    updater.recalculate_user("User_uuid")
+    await updater.recalculate_user("User_uuid")
 
     updater.helper._mo_post.assert_called_once_with(
         "details/edit",
@@ -117,10 +116,9 @@ def test_sd_non_integer_user_key_only_engagement(dummy_settings):
     )
 
 
-def test_sd_by_fraction(dummy_settings):
+async def test_sd_by_fraction(dummy_settings):
     # Arrange
-    updater = SDPrimaryEngagementUpdaterTest(dummy_settings)
-    updater.helper = MagicMock()
+    updater = await SDPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = ResponseOK()
     uuid_primary_engagement = str(uuid4())
     mo_engagements = [
@@ -138,8 +136,8 @@ def test_sd_by_fraction(dummy_settings):
         },
     ]
 
-    updater._read_engagement = MagicMock(return_value=mo_engagements)
-    updater.helper.find_cut_dates = MagicMock(
+    updater._read_engagement = AsyncMock(return_value=mo_engagements)
+    updater.helper.find_cut_dates = AsyncMock(
         return_value=(
             datetime.fromisoformat("2024-01-14"),
             datetime.max,
@@ -147,7 +145,7 @@ def test_sd_by_fraction(dummy_settings):
     )
 
     # Act
-    updater.recalculate_user("User_uuid")
+    await updater.recalculate_user("User_uuid")
 
     # Assert
     updater.helper._mo_post.assert_called_once_with(
@@ -163,10 +161,9 @@ def test_sd_by_fraction(dummy_settings):
     )
 
 
-def test_sd_by_user_key(dummy_settings):
+async def test_sd_by_user_key(dummy_settings):
     # Arrange
-    updater = SDPrimaryEngagementUpdaterTest(dummy_settings)
-    updater.helper = MagicMock()
+    updater = await SDPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = ResponseOK()
     uuid_primary_engagement = str(uuid4())
     mo_engagements = [
@@ -184,8 +181,8 @@ def test_sd_by_user_key(dummy_settings):
         },
     ]
 
-    updater._read_engagement = MagicMock(return_value=mo_engagements)
-    updater.helper.find_cut_dates = MagicMock(
+    updater._read_engagement = AsyncMock(return_value=mo_engagements)
+    updater.helper.find_cut_dates = AsyncMock(
         return_value=(
             datetime.fromisoformat("2024-01-14"),
             datetime.max,
@@ -193,7 +190,7 @@ def test_sd_by_user_key(dummy_settings):
     )
 
     # Act
-    updater.recalculate_user("User_uuid")
+    await updater.recalculate_user("User_uuid")
 
     # Assert
     updater.helper._mo_post.assert_called_once_with(

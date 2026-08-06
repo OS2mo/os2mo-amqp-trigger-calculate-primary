@@ -5,6 +5,7 @@ import datetime
 from collections import OrderedDict
 from operator import itemgetter
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import call
 
@@ -60,12 +61,11 @@ def engagements_at_date(date, engagements):
 
 
 class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
-    def __init__(self, settings):
-        helper = MagicMock()
-        helper.read_organisation.return_value = "org_uuid"
-        super().__init__(settings, helper)
+    @classmethod
+    async def create(cls, settings, mora_helper):
+        return await super().create(settings, mora_helper)
 
-    def _find_primary_types(self):
+    async def _find_primary_types(self):
         primary_dict = {
             "fixed_primary": "fixed_primary_uuid",
             "primary": "primary_uuid",
@@ -84,13 +84,13 @@ class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
 
 
 @pytest.fixture
-def updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
-    return MOPrimaryEngagementUpdaterTest(dummy_settings)
+async def updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
+    return await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
 
 
 @pytest.fixture
-def recalculate_updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
-    updater = MOPrimaryEngagementUpdaterTest(dummy_settings)
+async def recalculate_updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
+    updater = await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = AttrDict(
         {
             "status_code": 200,
@@ -143,7 +143,7 @@ def overlapping_engagements() -> list[dict[str, Any]]:
         )
     )
 )
-def test_check_user_non_overlapping(
+async def test_check_user_non_overlapping(
     updater: MOPrimaryEngagementUpdaterTest, engagements
 ):
     """Test the result of running _check_user on non-overlapping engagements.
@@ -167,9 +167,10 @@ def test_check_user_non_overlapping(
 
     # As engagements are made non-overlapping, we will always return only one,
     # namely the one found by lookup in our engagement_map
-    updater._read_engagement = lambda user_uuid, date: [
-        {"primary": {"uuid": engagement_map[date]}}
-    ]
+    async def _read_engagement(user_uuid, date):
+        return [{"primary": {"uuid": engagement_map[date]}}]
+
+    updater._read_engagement = _read_engagement
     check_filters = [
         # Filter out special primaries
         lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
@@ -182,7 +183,7 @@ def test_check_user_non_overlapping(
         special_count = 1 if uuid == "special_primary_uuid" else 0
         return 1, count, count - special_count
 
-    assert updater._check_user(check_filters, "user_uuid") == {
+    assert await updater._check_user(check_filters, "user_uuid") == {
         date: gen_expected(date) for date in cut_dates[:-1]
     }
 
@@ -207,16 +208,20 @@ def test_engagements_at_date(overlapping_engagements: list[dict[str, Any]]):
         assert engagement_uuids == expected
 
 
-def test_check_user_overlapping(
+async def test_check_user_overlapping(
     updater: MOPrimaryEngagementUpdaterTest,
     overlapping_engagements: list[dict[str, Any]],
 ):
     """Test the result of running _check_user on overlapping engagements."""
+
     # See test_engagement_at_date for details
-    updater._read_engagement = lambda user_uuid, date: [
-        {"primary": {"uuid": engagement["uuid"]}}
-        for engagement in engagements_at_date(date, overlapping_engagements)
-    ]
+    async def _read_engagement(user_uuid, date):
+        return [
+            {"primary": {"uuid": engagement["uuid"]}}
+            for engagement in engagements_at_date(date, overlapping_engagements)
+        ]
+
+    updater._read_engagement = _read_engagement
 
     # See test_mora_cut_dates for details
     cut_dates = [
@@ -234,7 +239,7 @@ def test_check_user_overlapping(
         lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
     ]
 
-    assert updater._check_user(check_filters, "user_uuid") == {
+    assert await updater._check_user(check_filters, "user_uuid") == {
         # Only primary_uuid
         datetime.datetime(1931, 1, 1, 0, 0): (1, 1, 1),
         # Both primary_uuid and fixed_primary_uuid
@@ -248,7 +253,7 @@ def test_check_user_overlapping(
     }
 
 
-def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
+async def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
     fixture_data = [
         (datetime.datetime(1931, 1, 1, 0, 0), (2, 0, 0)),
         (datetime.datetime(1932, 1, 1, 0, 0), (2, 1, 1)),
@@ -258,10 +263,14 @@ def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
     ]
     # It does not normally return an ordered dict, but for testing we want a
     # consistent order.
-    updater._check_user = lambda check_filters, user_uuid: OrderedDict(fixture_data)
+
+    async def _check_user(check_filters, user_uuid):
+        return OrderedDict(fixture_data)
+
+    updater._check_user = _check_user
 
     _, strings, user_uuids, dates = unzip(
-        updater._check_user_outputter([], "user_uuid")
+        [x async for x in updater._check_user_outputter([], "user_uuid")]
     )
 
     assert list(strings) == [
@@ -275,7 +284,9 @@ def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
     assert list(user_uuids) == ["user_uuid"] * 5
     assert list(dates) == list(map(itemgetter(0), fixture_data))
 
-    _, final_strings = unzip(updater._check_user_strings([], "user_uuid"))
+    _, final_strings = unzip(
+        [x async for x in updater._check_user_strings([], "user_uuid")]
+    )
     assert list(final_strings) == [
         "No primary for user_uuid at 1931-01-01",
         " for user_uuid at 1932-01-01",
@@ -285,17 +296,17 @@ def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
     ]
 
 
-def test_recalculate_no_engagements(
+async def test_recalculate_no_engagements(
     recalculate_updater: MOPrimaryEngagementUpdaterTest,
 ):
     """Test that no engagements mean no changes and no attempted updates."""
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
     recalculate_updater._ensure_primary.assert_not_called()
 
 
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(st.sampled_from(["primary_uuid", "fixed_primary_uuid"]))
-def test_recalculate_single_engagement_already_primary(
+async def test_recalculate_single_engagement_already_primary(
     recalculate_updater: MOPrimaryEngagementUpdaterTest, old_primary
 ):
     """Test that a primary engagement is still primary after recalculate."""
@@ -306,9 +317,13 @@ def test_recalculate_single_engagement_already_primary(
     recalculate_updater.helper.find_cut_dates.return_value = cut_dates
 
     engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
-    recalculate_updater._read_engagement = lambda user_uuid, date: [engagement]
 
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    async def _read_engagement(user_uuid, date):
+        return [engagement]
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
     recalculate_updater._ensure_primary.assert_called_with(
         engagement, old_primary, {"from": "2930-01-01", "to": None}
     )
@@ -317,7 +332,7 @@ def test_recalculate_single_engagement_already_primary(
 
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(st.sampled_from(["non_primary_uuid", "unrelated_uuid"]))
-def test_recalculate_single_engagement_becoming_primary(
+async def test_recalculate_single_engagement_becoming_primary(
     recalculate_updater: MOPrimaryEngagementUpdaterTest, old_primary
 ):
     """Test that a non-primary engagement becomes primary after recalculate."""
@@ -328,9 +343,13 @@ def test_recalculate_single_engagement_becoming_primary(
     recalculate_updater.helper.find_cut_dates.return_value = cut_dates
 
     engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
-    recalculate_updater._read_engagement = lambda user_uuid, date: [engagement]
 
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
+    async def _read_engagement(user_uuid, date):
+        return [engagement]
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
     recalculate_updater._ensure_primary.assert_called_with(
         engagement, "primary_uuid", {"from": "2930-01-01", "to": None}
     )
@@ -347,7 +366,7 @@ def test_recalculate_single_engagement_becoming_primary(
     )
 
 
-def test_recalculate_multiple_engagements(
+async def test_recalculate_multiple_engagements(
     recalculate_updater: MOPrimaryEngagementUpdaterTest,
 ):
     """Test that non-primary engagements yield one primary after recalculate.
@@ -366,9 +385,12 @@ def test_recalculate_multiple_engagements(
     ]
     recalculate_updater.helper.find_cut_dates.return_value = cut_dates
 
-    recalculate_updater._read_engagement = lambda user_uuid, date: engagements
+    async def _read_engagement(user_uuid, date):
+        return engagements
 
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
     recalculate_updater._ensure_primary.assert_has_calls(
         [
             call(engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}),
@@ -393,7 +415,7 @@ def test_recalculate_multiple_engagements(
     )
 
 
-def test_recalculate_multiple_engagements_wrong_primary(
+async def test_recalculate_multiple_engagements_wrong_primary(
     recalculate_updater: MOPrimaryEngagementUpdaterTest,
 ):
     """Test that opposite primary engagements yield two after changes.
@@ -412,9 +434,12 @@ def test_recalculate_multiple_engagements_wrong_primary(
     ]
     recalculate_updater.helper.find_cut_dates.return_value = cut_dates
 
-    recalculate_updater._read_engagement = lambda user_uuid, date: engagements
+    async def _read_engagement(user_uuid, date):
+        return engagements
 
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 2}
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 2}
     recalculate_updater._ensure_primary.assert_has_calls(
         [
             call(engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}),
@@ -454,7 +479,7 @@ def test_recalculate_multiple_engagements_wrong_primary(
     )
 
 
-def test_recalculate_multiple_engagements_fixed_primary(
+async def test_recalculate_multiple_engagements_fixed_primary(
     recalculate_updater: MOPrimaryEngagementUpdaterTest,
 ):
     """Test that fixed primaries overrule normal primary calculation.
@@ -473,9 +498,12 @@ def test_recalculate_multiple_engagements_fixed_primary(
     ]
     recalculate_updater.helper.find_cut_dates.return_value = cut_dates
 
-    recalculate_updater._read_engagement = lambda user_uuid, date: engagements
+    async def _read_engagement(user_uuid, date):
+        return engagements
 
-    assert recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
     recalculate_updater._ensure_primary.assert_has_calls(
         [
             call(

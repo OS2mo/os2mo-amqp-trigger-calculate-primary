@@ -103,7 +103,7 @@ async def test_read_user_engagements(
         )
     )
 
-    engs: list[EngagementDict] = mora_helper.read_user_engagements(
+    engs: list[EngagementDict] = await mora_helper.read_user_engagements(
         default_employee.uuid,
         at=t3,
         only_primary=True,
@@ -175,7 +175,7 @@ async def test_find_cut_dates(
         )
     )
 
-    dates = mora_helper.find_cut_dates(str(default_employee.uuid))
+    dates = await mora_helper.find_cut_dates(str(default_employee.uuid))
 
     # XXX: `MoraHelper` returns naive datetimes, so we have to strip the timezone
     #   before asserting
@@ -234,7 +234,7 @@ async def test_mo_post(
             "primary": {"uuid": str(primary)},
         },
     }
-    res = mora_helper._mo_post("details/edit", payload)
+    res = await mora_helper._mo_post("details/edit", payload)
     res.raise_for_status()
 
     engagements = await graphql_client._testing__get_employee_engagements(
@@ -291,7 +291,7 @@ async def test_read_classes_in_facet(
         )
     )
 
-    classes, facet_uuid = mora_helper.read_classes_in_facet("favorite_pokemon")
+    classes, facet_uuid = await mora_helper.read_classes_in_facet("favorite_pokemon")
 
     got_class: ClassDict = one(classes)
     assert facet_uuid == str(facet.uuid)
@@ -339,5 +339,5 @@ async def test_mo_post_error_400(
             "primary": {"uuid": str(primary_types["primary"])},
         },
     }
-    res = mora_helper._mo_post("details/edit", payload)
+    res = await mora_helper._mo_post("details/edit", payload)
     assert res.status_code == 400
