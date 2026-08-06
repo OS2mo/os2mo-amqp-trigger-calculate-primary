@@ -13,12 +13,12 @@ import structlog
 from more_itertools import ilen
 from more_itertools import only
 from more_itertools import pairwise
-from os2mo_helpers.mora_helpers import MoraHelper
 
 from calculate_primary.config import Settings
 from calculate_primary.model import EngagementDict
 from calculate_primary.model import EngagementEditPayload
 from calculate_primary.model import ValidityDict
+from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
 

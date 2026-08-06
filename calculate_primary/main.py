@@ -7,13 +7,13 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastramqpi.main import FastRAMQPI
-from os2mo_helpers.mora_helpers import MoraHelper
 from prometheus_client import Counter
 from prometheus_client import Gauge
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
 from calculate_primary.common import get_engagement_updater
 from calculate_primary.config import Settings
+from calculate_primary.mora_helper_shim import MoraHelper
 
 edit_counter = Counter("recalculate_edit", "Number of edits made")
 no_edit_counter = Counter("recalculate_no_edit", "Number of noops made")
@@ -55,14 +55,7 @@ async def setup_updater(settings: Settings, fastramqpi: FastRAMQPI):
     print(f"Acquiring updater: {settings.integration}")
     updater_class = get_engagement_updater(settings.integration)
     print(f"Got class: {updater_class}")
-    mora_helper = MoraHelper(
-        hostname=settings.fastramqpi.mo_url,
-        auth_server=settings.fastramqpi.auth_server,
-        client_id=settings.fastramqpi.client_id,
-        client_secret=settings.fastramqpi.client_secret.get_secret_value(),
-        auth_realm=settings.fastramqpi.auth_realm,
-        use_cache=False,
-    )
+    mora_helper = MoraHelper(settings)
     updater: MOPrimaryEngagementUpdater = updater_class(settings, mora_helper)
     print(f"Got object: {updater}")
     fastramqpi.add_context(updater=updater)
