@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 import math
 from typing import Any
+from typing import Self
 
 import structlog
 
@@ -14,8 +15,9 @@ logger = structlog.stdlib.get_logger()
 
 
 class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @classmethod
+    async def create(cls, *args, **kwargs) -> Self:
+        this = await super().create(*args, **kwargs)
 
         # Currently primary is set first by engagement type (order given in
         # settings) and secondly by job_id.
@@ -24,11 +26,13 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         def remove_missing_user_key(user_uuid, no_past, engagement):
             return "user_key" in engagement
 
-        self.calculate_filters = [
+        this.calculate_filters = [
             remove_missing_user_key,
         ]
 
-    def _find_primary_types(self):
+        return this
+
+    async def _find_primary_types(self):
         """
         Read the engagement types from MO and match them up against the three
         known types in the OPUS->MO import.
@@ -48,9 +52,9 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
             "non_primary": None,
         }
 
-        primary_types: tuple[list[ClassDict], Any] = self.helper.read_classes_in_facet(
-            "primary_type"
-        )
+        primary_types: tuple[
+            list[ClassDict], Any
+        ] = await self.helper.read_classes_in_facet("primary_type")
         for primary_type in primary_types[0]:
             if primary_type["user_key"] == PRIMARY:
                 primary_dict["primary"] = primary_type["uuid"]

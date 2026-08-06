@@ -30,7 +30,7 @@ class MoraHelper:
             use_cache=False,
         )
 
-    def read_user_engagements(
+    async def read_user_engagements(
         self,
         user: UUID | str,
         at: datetime,
@@ -47,14 +47,14 @@ class MoraHelper:
             use_cache=use_cache,
         )
 
-    def find_cut_dates(
+    async def find_cut_dates(
         self, uuid: str, no_past: Literal[False] = False
     ) -> list[datetime]:
         assert not no_past, "`no_past=True` is not supported by this shim"
 
         return self._mora_helper.find_cut_dates(uuid, no_past=no_past)
 
-    def _mo_post(
+    async def _mo_post(
         self, url: Literal["details/edit"], payload: EngagementEditPayload
     ) -> Response:
         assert url == "details/edit", f"`url={url}` is not supported by this shim"
@@ -64,5 +64,5 @@ class MoraHelper:
 
         return self._mora_helper._mo_post(url, payload)
 
-    def read_classes_in_facet(self, facet: str) -> tuple[list[ClassDict], str]:
+    async def read_classes_in_facet(self, facet: str) -> tuple[list[ClassDict], str]:
         return self._mora_helper.read_classes_in_facet(facet)
