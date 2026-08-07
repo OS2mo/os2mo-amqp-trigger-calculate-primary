@@ -1,7 +1,11 @@
+from ._testing__create_class import TestingCreateClass
+from ._testing__create_class import TestingCreateClassClassCreate
 from ._testing__create_employee import TestingCreateEmployee
 from ._testing__create_employee import TestingCreateEmployeeEmployeeCreate
 from ._testing__create_engagement import TestingCreateEngagement
 from ._testing__create_engagement import TestingCreateEngagementEngagementCreate
+from ._testing__create_facet import TestingCreateFacet
+from ._testing__create_facet import TestingCreateFacetFacetCreate
 from ._testing__create_org_unit import TestingCreateOrgUnit
 from ._testing__create_org_unit import TestingCreateOrgUnitOrgUnitCreate
 from ._testing__get_engagement import TestingGetEngagement
@@ -14,10 +18,12 @@ from ._testing__get_engagement import (
 from ._testing__get_engagement import (
     TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponseValidities,
 )
-from ._testing__get_primary_types import TestingGetPrimaryTypes
-from ._testing__get_primary_types import TestingGetPrimaryTypesClasses
-from ._testing__get_primary_types import TestingGetPrimaryTypesClassesObjects
-from ._testing__get_primary_types import TestingGetPrimaryTypesClassesObjectsValidities
+from ._testing__get_facet_by_user_key import TestingGetFacetByUserKey
+from ._testing__get_facet_by_user_key import TestingGetFacetByUserKeyFacets
+from ._testing__get_facet_by_user_key import TestingGetFacetByUserKeyFacetsObjects
+from ._testing__get_facet_by_user_key import (
+    TestingGetFacetByUserKeyFacetsObjectsValidities,
+)
 from ._testing__update_engagement import TestingUpdateEngagement
 from ._testing__update_engagement import TestingUpdateEngagementEngagementUpdate
 from .async_base_client import AsyncBaseClient
@@ -32,11 +38,56 @@ from .exceptions import GraphQLClientGraphQLError
 from .exceptions import GraphQLClientGraphQLMultiError
 from .exceptions import GraphQLClientHttpError
 from .exceptions import GraphQlClientInvalidResponseError
+from .get_employee_engagements import GetEmployeeEngagements
+from .get_employee_engagements import GetEmployeeEngagementsEngagements
+from .get_employee_engagements import GetEmployeeEngagementsEngagementsObjects
+from .get_employee_engagements import GetEmployeeEngagementsEngagementsObjectsValidities
+from .get_employee_engagements import (
+    GetEmployeeEngagementsEngagementsObjectsValiditiesPrimaryResponse,
+)
+from .get_employee_engagements import (
+    GetEmployeeEngagementsEngagementsObjectsValiditiesPrimaryResponseValidities,
+)
+from .get_employee_engagements import (
+    GetEmployeeEngagementsEngagementsObjectsValiditiesValidity,
+)
+from .get_employee_engagements_at import GetEmployeeEngagementsAt
+from .get_employee_engagements_at import GetEmployeeEngagementsAtEngagements
+from .get_employee_engagements_at import GetEmployeeEngagementsAtEngagementsObjects
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrent,
+)
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrentEngagementTypeResponse,
+)
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrentEngagementTypeResponseCurrent,
+)
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrentPrimaryResponse,
+)
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrentPrimaryResponseCurrent,
+)
+from .get_employee_engagements_at import (
+    GetEmployeeEngagementsAtEngagementsObjectsCurrentValidity,
+)
 from .get_engagement_person import GetEngagementPerson
 from .get_engagement_person import GetEngagementPersonEngagements
 from .get_engagement_person import GetEngagementPersonEngagementsObjects
 from .get_engagement_person import GetEngagementPersonEngagementsObjectsValidities
 from .get_engagement_person import GetEngagementPersonEngagementsObjectsValiditiesPerson
+from .get_facet_classes_by_user_key import GetFacetClassesByUserKey
+from .get_facet_classes_by_user_key import GetFacetClassesByUserKeyClasses
+from .get_facet_classes_by_user_key import GetFacetClassesByUserKeyClassesObjects
+from .get_facet_classes_by_user_key import (
+    GetFacetClassesByUserKeyClassesObjectsValidities,
+)
+from .get_facet_classes_by_user_key import GetFacetClassesByUserKeyFacets
+from .get_facet_classes_by_user_key import GetFacetClassesByUserKeyFacetsObjects
+from .get_facet_classes_by_user_key import (
+    GetFacetClassesByUserKeyFacetsObjectsValidities,
+)
 from .input_types import AccessLogFilter
 from .input_types import AddressCreateInput
 from .input_types import AddressFilter
@@ -171,6 +222,8 @@ from .input_types import UuidsBoundITUserFilter
 from .input_types import UuidsBoundLeaveFilter
 from .input_types import UuidsBoundOrganisationUnitFilter
 from .input_types import ValidityInput
+from .update_engagement import UpdateEngagement
+from .update_engagement import UpdateEngagementEngagementUpdate
 
 __all__ = [
     "AccessLogFilter",
@@ -227,11 +280,34 @@ __all__ = [
     "FileFilter",
     "FileStore",
     "FullEventFilter",
+    "GetEmployeeEngagements",
+    "GetEmployeeEngagementsAt",
+    "GetEmployeeEngagementsAtEngagements",
+    "GetEmployeeEngagementsAtEngagementsObjects",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrent",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrentEngagementTypeResponse",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrentEngagementTypeResponseCurrent",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrentPrimaryResponse",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrentPrimaryResponseCurrent",
+    "GetEmployeeEngagementsAtEngagementsObjectsCurrentValidity",
+    "GetEmployeeEngagementsEngagements",
+    "GetEmployeeEngagementsEngagementsObjects",
+    "GetEmployeeEngagementsEngagementsObjectsValidities",
+    "GetEmployeeEngagementsEngagementsObjectsValiditiesPrimaryResponse",
+    "GetEmployeeEngagementsEngagementsObjectsValiditiesPrimaryResponseValidities",
+    "GetEmployeeEngagementsEngagementsObjectsValiditiesValidity",
     "GetEngagementPerson",
     "GetEngagementPersonEngagements",
     "GetEngagementPersonEngagementsObjects",
     "GetEngagementPersonEngagementsObjectsValidities",
     "GetEngagementPersonEngagementsObjectsValiditiesPerson",
+    "GetFacetClassesByUserKey",
+    "GetFacetClassesByUserKeyClasses",
+    "GetFacetClassesByUserKeyClassesObjects",
+    "GetFacetClassesByUserKeyClassesObjectsValidities",
+    "GetFacetClassesByUserKeyFacets",
+    "GetFacetClassesByUserKeyFacetsObjects",
+    "GetFacetClassesByUserKeyFacetsObjectsValidities",
     "GraphQLClient",
     "GraphQLClientError",
     "GraphQLClientGraphQLError",
@@ -315,10 +391,14 @@ __all__ = [
     "RoleBindingTerminateInput",
     "RoleBindingUpdateInput",
     "RoleRegistrationFilter",
+    "TestingCreateClass",
+    "TestingCreateClassClassCreate",
     "TestingCreateEmployee",
     "TestingCreateEmployeeEmployeeCreate",
     "TestingCreateEngagement",
     "TestingCreateEngagementEngagementCreate",
+    "TestingCreateFacet",
+    "TestingCreateFacetFacetCreate",
     "TestingCreateOrgUnit",
     "TestingCreateOrgUnitOrgUnitCreate",
     "TestingGetEngagement",
@@ -327,12 +407,14 @@ __all__ = [
     "TestingGetEngagementEngagementsObjectsValidities",
     "TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponse",
     "TestingGetEngagementEngagementsObjectsValiditiesPrimaryResponseValidities",
-    "TestingGetPrimaryTypes",
-    "TestingGetPrimaryTypesClasses",
-    "TestingGetPrimaryTypesClassesObjects",
-    "TestingGetPrimaryTypesClassesObjectsValidities",
+    "TestingGetFacetByUserKey",
+    "TestingGetFacetByUserKeyFacets",
+    "TestingGetFacetByUserKeyFacetsObjects",
+    "TestingGetFacetByUserKeyFacetsObjectsValidities",
     "TestingUpdateEngagement",
     "TestingUpdateEngagementEngagementUpdate",
+    "UpdateEngagement",
+    "UpdateEngagementEngagementUpdate",
     "UuidsBoundClassFilter",
     "UuidsBoundEmployeeFilter",
     "UuidsBoundEngagementFilter",

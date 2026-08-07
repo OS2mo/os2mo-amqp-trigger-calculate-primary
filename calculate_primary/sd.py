@@ -2,10 +2,14 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 import datetime
+from typing import Any
+from typing import Self
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.model import ClassDict
+from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
 
@@ -17,7 +21,7 @@ logger = structlog.stdlib.get_logger()
 # unlikely that it will be removed from the SD-integration anyway as this
 # integration should not have the responsibility of calculating primary
 # engagements
-def get_primary_types(helper):
+async def get_primary_types(helper: MoraHelper):
     """
     Read the engagement types from MO and match them up against the four
     known types in the SD->MO import.
@@ -51,7 +55,9 @@ def get_primary_types(helper):
     non_primary = None
     fixed_primary = None
 
-    primary_types = helper.read_classes_in_facet("primary_type")
+    primary_types: tuple[list[ClassDict], Any] = await helper.read_classes_in_facet(
+        "primary_type"
+    )
     for primary_type in primary_types[0]:
         if primary_type["user_key"] == PRIMARY:
             primary = primary_type["uuid"]
@@ -71,8 +77,9 @@ def get_primary_types(helper):
 
 
 class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @classmethod
+    async def create(cls, *args, **kwargs) -> Self:
+        this = await super().create(*args, **kwargs)
 
         def remove_past(user_uuid, no_past, eng):
             if no_past and eng["validity"]["to"]:
@@ -84,14 +91,16 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         def remove_missing_user_key(user_uuid, no_past, eng):
             return "user_key" in eng
 
-        self.calculate_filters = [
+        this.calculate_filters = [
             remove_past,
             remove_missing_user_key,
         ]
 
-    def _find_primary_types(self):
+        return this
+
+    async def _find_primary_types(self):
         # Keys are; fixed_primary, primary and non-primary
-        primary_types = get_primary_types(self.helper)
+        primary_types = await get_primary_types(self.helper)
         primary = [
             primary_types["fixed_primary"],
             primary_types["primary"],

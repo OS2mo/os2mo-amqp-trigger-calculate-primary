@@ -2,17 +2,22 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 import datetime
+from typing import Any
+from typing import Self
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.model import ClassDict
+from calculate_primary.model import EngagementDict
 
 logger = structlog.stdlib.get_logger()
 
 
 class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @classmethod
+    async def create(cls, *args, **kwargs) -> Self:
+        this = await super().create(*args, **kwargs)
 
         def remove_past(user_uuid, no_past, eng):
             if no_past and eng["validity"]["to"]:
@@ -21,10 +26,12 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
                     return False
             return True
 
-        self.check_filters = []
-        self.calculate_filters = [remove_past]
+        this.check_filters = []
+        this.calculate_filters = [remove_past]
 
-    def _find_primary_types(self):
+        return this
+
+    async def _find_primary_types(self):
         """
         Read the engagement types from MO and match them up against the three
         known types in the OPUS->MO import.
@@ -36,9 +43,15 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         FIXED_PRIMARY = "explicitly-primary"
 
         logger.info("Read primary types")
-        primary_dict = {"fixed_primary": None, "primary": None, "non_primary": None}
+        primary_dict: dict[str, str | None] = {
+            "fixed_primary": None,
+            "primary": None,
+            "non_primary": None,
+        }
 
-        primary_types = self.helper.read_classes_in_facet("primary_type")
+        primary_types: tuple[
+            list[ClassDict], Any
+        ] = await self.helper.read_classes_in_facet("primary_type")
         for primary_type in primary_types[0]:
             if primary_type["user_key"] == PRIMARY:
                 primary_dict["primary"] = primary_type["uuid"]
@@ -53,7 +66,7 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
         return primary_dict, primary_list
 
-    def _find_primary(self, mo_engagements):
+    def _find_primary(self, mo_engagements: list[EngagementDict]):
         if not mo_engagements:
             return None
 

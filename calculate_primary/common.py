@@ -1,21 +1,25 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-import datetime
 from abc import ABC
 from abc import abstractmethod
+from datetime import datetime
+from datetime import timedelta
 from functools import partial
 from operator import itemgetter
-from typing import Union
+from typing import Any
 from uuid import UUID
 
 import structlog
 from more_itertools import ilen
 from more_itertools import only
 from more_itertools import pairwise
-from os2mo_helpers.mora_helpers import MoraHelper
 
 from calculate_primary.config import Settings
+from calculate_primary.model import EngagementDict
+from calculate_primary.model import EngagementEditPayload
+from calculate_primary.model import ValidityDict
+from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
 
@@ -61,31 +65,35 @@ def noop(*args, **kwargs):
 
 
 class MOPrimaryEngagementUpdater(ABC):
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.helper = self._get_mora_helper(settings)
+    settings: Settings
+    helper: MoraHelper
+    check_filters: list[Any]
+    calculate_filters: list[Any]
+    primary_types: dict[str, str]
+    primary: list[str]
+
+    def __init__(self):
+        raise NotImplementedError("use the async `create` constructor instead")
+
+    @classmethod
+    async def create(cls, settings: Settings, mora_helper: MoraHelper):
+        this = cls.__new__(cls)
+        this.settings = settings
+        this.helper = mora_helper
 
         # List of engagement filters to apply to check / recalculate respectively
         # NOTE: Should be overridden by subclasses
-        self.check_filters = []
-        self.calculate_filters = []
+        this.check_filters = []
+        this.calculate_filters = []
 
-        self.primary_types, self.primary = self._find_primary_types()
+        this.primary_types, this.primary = await this._find_primary_types()
+        return this
 
-    def _get_mora_helper(self, settings: Settings):
-        """Construct a MoraHelper object."""
-        return MoraHelper(
-            hostname=settings.fastramqpi.mo_url,
-            auth_server=settings.fastramqpi.auth_server,
-            client_id=settings.fastramqpi.client_id,
-            client_secret=settings.fastramqpi.client_secret.get_secret_value(),
-            auth_realm=settings.fastramqpi.auth_realm,
-            use_cache=False,
-        )
-
-    def _read_engagement(self, user_uuid, date):
+    async def _read_engagement(
+        self, user_uuid: str, date: datetime
+    ) -> list[EngagementDict]:
         """Fetch all engagements for user_uuid at date."""
-        mo_engagements = self.helper.read_user_engagements(
+        mo_engagements = await self.helper.read_user_engagements(
             user=user_uuid,
             at=date,
             only_primary=True,  # Do not read extended info from MO.
@@ -94,7 +102,7 @@ class MOPrimaryEngagementUpdater(ABC):
         return mo_engagements
 
     @abstractmethod
-    def _find_primary_types(self):
+    async def _find_primary_types(self):
         """Find primary classes for the underlying implementation.
 
         Returns:
@@ -151,7 +159,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return True
         return False
 
-    def _count_primary_engagements(self, check_filters, user_uuid, mo_engagements):
+    def _count_primary_engagements(
+        self, check_filters, user_uuid, mo_engagements: list[EngagementDict]
+    ):
         """Count number of primaries.
 
         Args:
@@ -188,7 +198,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         return engagement_count, primary_count, filtered_primary_count
 
-    def _check_user(self, check_filters, user_uuid):
+    async def _check_user(self, check_filters, user_uuid):
         """Check the users primary engagement(s).
 
         Args:
@@ -201,19 +211,21 @@ class MOPrimaryEngagementUpdater(ABC):
                 value: A 3-tuple, from _count_primary_engagements.
         """
         # List of cut dates, excluding the very last one
-        date_list = self.helper.find_cut_dates(uuid=user_uuid)
+        date_list: list[datetime] = await self.helper.find_cut_dates(uuid=user_uuid)
         date_list = date_list[:-1]
         # Map all our dates, to their corresponding engagements.
-        mo_engagements = map(partial(self._read_engagement, user_uuid), date_list)
+        mo_engagements = [
+            await self._read_engagement(user_uuid, date) for date in date_list
+        ]
         # Map mo_engagements to primary counts
-        primary_counts = map(
-            partial(self._count_primary_engagements, check_filters, user_uuid),
-            mo_engagements,
+        primary_counts = (
+            self._count_primary_engagements(check_filters, user_uuid, engs)
+            for engs in mo_engagements
         )
         # Create dicts from cut_dates --> primary_counts
         return dict(zip(date_list, primary_counts))
 
-    def _check_user_outputter(self, check_filters, user_uuid):
+    async def _check_user_outputter(self, check_filters, user_uuid):
         """Check the users primary engagement(s).
 
         Args:
@@ -241,12 +253,12 @@ class MOPrimaryEngagementUpdater(ABC):
                 return (logger.info, "Only one non-special primary")
             return (print, "Too many primaries")
 
-        user_results = self._check_user(check_filters, user_uuid)
+        user_results = await self._check_user(check_filters, user_uuid)
         for date, (e_count, p_count, fp_count) in user_results.items():
             outputter, string = to_output(e_count, p_count, fp_count)
             yield outputter, string, user_uuid, date
 
-    def _check_user_strings(self, check_filters, user_uuid):
+    async def _check_user_strings(self, check_filters, user_uuid):
         """Check the users primary engagement(s).
 
         Args:
@@ -259,7 +271,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 string: Formatted output string
         """
         outputs = self._check_user_outputter(check_filters, user_uuid)
-        for outputter, string, user_uuid, date in outputs:
+        async for outputter, string, user_uuid, date in outputs:
             final_string = string + " for {} at {}".format(user_uuid, date.date())
             yield outputter, final_string
 
@@ -300,7 +312,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return primary, "primary"
         raise NoPrimaryFound()
 
-    def _ensure_primary(self, engagement, primary_type_uuid, validity):
+    async def _ensure_primary(
+        self, engagement: EngagementDict, primary_type_uuid: str, validity
+    ) -> bool:
         """Ensure that engagement has the right primary_type.
 
         Assuming the engagement already has the correct primary_type this method
@@ -324,7 +338,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # At this point, we know that we have to update the engagement, thus we
         # construct an update payload and send it to MO.
-        payload = {
+        payload: EngagementEditPayload = {
             "type": "engagement",
             "uuid": engagement["uuid"],
             "data": {"primary": {"uuid": primary_type_uuid}, "validity": validity},
@@ -332,7 +346,7 @@ class MOPrimaryEngagementUpdater(ABC):
         logger.debug("Edit payload: {}".format(payload))
 
         if not self.settings.dry_run:
-            response = self.helper._mo_post("details/edit", payload)
+            response = await self.helper._mo_post("details/edit", payload)
             assert response.status_code in (200, 400)
             if response.status_code == 400:
                 # XXX: This shouldn't happen due to the previous check?
@@ -340,17 +354,19 @@ class MOPrimaryEngagementUpdater(ABC):
                 return False
         return True
 
-    def recalculate_user(self, user_uuid: Union[UUID, str], no_past=False):
+    async def recalculate_user(
+        self, user_uuid: UUID | str, no_past=False
+    ) -> dict[str, int]:
         """(Re)calculate primary engagement for the entire history the user."""
         user_uuid = str(user_uuid)
 
-        def fetch_mo_engagements(date):
+        async def fetch_mo_engagements(date: datetime) -> list[EngagementDict]:
             """Fetch engagements which are active at 'date' and fulfill our filters.
 
             Also ensures that the 'primary' attribute is set on all engagements.
             """
 
-            def ensure_primary(engagement):
+            def ensure_primary(engagement: EngagementDict) -> EngagementDict:
                 """Ensure that engagement has a primary field."""
                 # TODO: It would seem this happens for leaves, should we make a
                 #       special type for this?
@@ -360,7 +376,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 return engagement
 
             # Fetch engagements
-            mo_engagements = self._read_engagement(user_uuid, date)
+            mo_engagements = await self._read_engagement(user_uuid, date)
             # Filter unwanted engagements
             for filter_func in self.calculate_filters:
                 mo_engagements = filter(
@@ -372,17 +388,15 @@ class MOPrimaryEngagementUpdater(ABC):
 
             return mo_engagements
 
-        def calculate_validity(start, end):
+        def calculate_validity(start: datetime, end: datetime) -> ValidityDict:
             """Construct engagement primarity validity from start and end date."""
-            to = datetime.datetime.strftime(
-                end - datetime.timedelta(days=1), "%Y-%m-%d"
-            )
+            to: str | None = datetime.strftime(end - timedelta(days=1), "%Y-%m-%d")
             # Sentinel value for infinity is usually 9999-12-30 / 9999-12-31.
             # We assume anything above 9999-1-1 is sentinel value for infinity.
-            if end >= datetime.datetime(9999, 1, 1, 0, 0):
+            if end >= datetime(9999, 1, 1, 0, 0):
                 to = None
-            validity = {
-                "from": datetime.datetime.strftime(start, "%Y-%m-%d"),
+            validity: ValidityDict = {
+                "from": datetime.strftime(start, "%Y-%m-%d"),
                 "to": to,
             }
             return validity
@@ -392,11 +406,13 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # Find a list of dates with changes in engagement, and for each change
         # decide which engagement is the primary between that and the next change.
-        date_list = self.helper.find_cut_dates(user_uuid, no_past=no_past)
+        date_list: list[datetime] = await self.helper.find_cut_dates(
+            user_uuid, no_past=no_past
+        )
         for start, end in pairwise(date_list):
             logger.info("Recalculate primary, date: {}".format(start))
 
-            mo_engagements = fetch_mo_engagements(start)
+            mo_engagements = await fetch_mo_engagements(start)
             logger.debug("MO engagements: {}".format(mo_engagements))
 
             # No engagements, no primary, and thus nothing to do
@@ -423,7 +439,9 @@ class MOPrimaryEngagementUpdater(ABC):
                 if engagement["uuid"] == primary_uuid:
                     primary_type_uuid = self.primary_types[primary_type_key]
 
-                changed = self._ensure_primary(engagement, primary_type_uuid, validity)
+                changed = await self._ensure_primary(
+                    engagement, primary_type_uuid, validity
+                )
                 if changed:
                     number_of_edits += 1
 

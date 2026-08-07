@@ -41,4 +41,4 @@ async def calculate_engagement(
     logger.info("Found related person(s)", person_uuids=uuids)
     # An engagement can be associated with multiple employees across its lifespan, although it typically isn't done.
     for person_uuid in uuids:
-        calculate_user(updater, person_uuid)
+        await calculate_user(updater, person_uuid)

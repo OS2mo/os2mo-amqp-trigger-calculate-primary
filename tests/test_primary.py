@@ -4,26 +4,19 @@
 import datetime
 from collections import OrderedDict
 from operator import itemgetter
-from unittest import TestCase
+from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import call
 
 import hypothesis.strategies as st
+import pytest
+from hypothesis import HealthCheck
 from hypothesis import given
+from hypothesis import settings
 from more_itertools import unzip
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
-from calculate_primary.config import AMQPConnectionSettings
-from calculate_primary.config import FastRAMQPISettings
-from calculate_primary.config import Settings
-
-# TODO: rewrite tests to be able to use fixture
-DUMMY_FASTRAMQPI = FastRAMQPISettings(
-    client_id="calculate_primary",
-    client_secret="secret",
-    amqp=AMQPConnectionSettings(url="amqp://guest:guest@msg-broker:5672/"),
-)
-DUMMY_SETTINGS = Settings(fastramqpi=DUMMY_FASTRAMQPI, integration="DEFAULT")
 
 
 class AttrDict(dict):
@@ -31,7 +24,7 @@ class AttrDict(dict):
 
     Example:
         script_result = AttrDict({"exit_code": 0})
-        self.assertEqual(script_result.exit_code, 0)
+        assert script_result.exit_code == 0
     """
 
     __getattr__ = dict.__getitem__
@@ -68,12 +61,11 @@ def engagements_at_date(date, engagements):
 
 
 class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
-    def _get_mora_helper(self, mora_base):
-        helper = MagicMock()
-        helper.read_organisation.return_value = "org_uuid"
-        return helper
+    @classmethod
+    async def create(cls, settings, mora_helper):
+        return await super().create(settings, mora_helper)
 
-    def _find_primary_types(self):
+    async def _find_primary_types(self):
         primary_dict = {
             "fixed_primary": "fixed_primary_uuid",
             "primary": "primary_uuid",
@@ -91,6 +83,53 @@ class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
         return mo_engagements[0]["uuid"]
 
 
+@pytest.fixture
+async def updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
+    return await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
+
+
+@pytest.fixture
+async def recalculate_updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
+    updater = await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
+    updater.helper._mo_post.return_value = AttrDict(
+        {
+            "status_code": 200,
+        }
+    )
+    updater._ensure_primary = MagicMock(wraps=updater._ensure_primary)
+    return updater
+
+
+@pytest.fixture
+def overlapping_engagements() -> list[dict[str, Any]]:
+    """Engagement fixture for testing overlapping engagements."""
+    engagements = [
+        {
+            "validity": {
+                "from": "1931-1-1",
+                "to": "1950-1-1",
+            },
+            "uuid": "primary_uuid",
+        },
+        {
+            "validity": {
+                "from": "1939-9-1",
+                "to": "1945-9-2",
+            },
+            "uuid": "fixed_primary_uuid",
+        },
+        {
+            "validity": {
+                "from": "1949-1-1",
+                "to": None,
+            },
+            "uuid": "special_primary_uuid",
+        },
+    ]
+    return engagements
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     engagements=st.lists(
         st.sampled_from(
@@ -104,8 +143,9 @@ class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
         )
     )
 )
-def test_check_user_non_overlapping(engagements):
-    updater = MOPrimaryEngagementUpdaterTest(DUMMY_SETTINGS)
+async def test_check_user_non_overlapping(
+    updater: MOPrimaryEngagementUpdaterTest, engagements
+):
     """Test the result of running _check_user on non-overlapping engagements.
 
     Args:
@@ -127,9 +167,10 @@ def test_check_user_non_overlapping(engagements):
 
     # As engagements are made non-overlapping, we will always return only one,
     # namely the one found by lookup in our engagement_map
-    updater._read_engagement = lambda user_uuid, date: [
-        {"primary": {"uuid": engagement_map[date]}}
-    ]
+    async def _read_engagement(user_uuid, date):
+        return [{"primary": {"uuid": engagement_map[date]}}]
+
+    updater._read_engagement = _read_engagement
     check_filters = [
         # Filter out special primaries
         lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
@@ -142,380 +183,339 @@ def test_check_user_non_overlapping(engagements):
         special_count = 1 if uuid == "special_primary_uuid" else 0
         return 1, count, count - special_count
 
-    assert updater._check_user(check_filters, "user_uuid") == {
+    assert await updater._check_user(check_filters, "user_uuid") == {
         date: gen_expected(date) for date in cut_dates[:-1]
     }
 
 
-class Test_check_user(TestCase):
-    """Test the check_user functions."""
+def test_engagements_at_date(overlapping_engagements: list[dict[str, Any]]):
+    """Test that engagements_at_date works as expected."""
+    # Expected data derived from engagements_fixture
+    engagements_at_date_tests = {
+        datetime.datetime(1930, 1, 1): [],
+        datetime.datetime(1931, 2, 1): ["primary_uuid"],
+        datetime.datetime(1938, 10, 1): ["primary_uuid"],
+        datetime.datetime(1939, 10, 1): ["primary_uuid", "fixed_primary_uuid"],
+        datetime.datetime(1945, 8, 1): ["primary_uuid", "fixed_primary_uuid"],
+        datetime.datetime(1946, 8, 1): ["primary_uuid"],
+        datetime.datetime(1948, 2, 1): ["primary_uuid"],
+        datetime.datetime(1949, 2, 1): ["primary_uuid", "special_primary_uuid"],
+        datetime.datetime(1951, 2, 1): ["special_primary_uuid"],
+    }
+    for date, expected in engagements_at_date_tests.items():
+        filtered_engagements = engagements_at_date(date, overlapping_engagements)
+        engagement_uuids = list(map(itemgetter("uuid"), filtered_engagements))
+        assert engagement_uuids == expected
 
-    def setUp(self):
-        self.updater = MOPrimaryEngagementUpdaterTest(DUMMY_SETTINGS)
 
-    def test_create(self):
-        """Test that setUp runs without using it for anything."""
-        pass
+async def test_check_user_overlapping(
+    updater: MOPrimaryEngagementUpdaterTest,
+    overlapping_engagements: list[dict[str, Any]],
+):
+    """Test the result of running _check_user on overlapping engagements."""
 
-    def engagements_fixture(self):
-        """Engagement fixture for testing overlapping engagements."""
-        engagements = [
-            {
-                "validity": {
-                    "from": "1931-1-1",
-                    "to": "1950-1-1",
-                },
-                "uuid": "primary_uuid",
-            },
-            {
-                "validity": {
-                    "from": "1939-9-1",
-                    "to": "1945-9-2",
-                },
-                "uuid": "fixed_primary_uuid",
-            },
-            {
-                "validity": {
-                    "from": "1949-1-1",
-                    "to": None,
-                },
-                "uuid": "special_primary_uuid",
-            },
+    # See test_engagement_at_date for details
+    async def _read_engagement(user_uuid, date):
+        return [
+            {"primary": {"uuid": engagement["uuid"]}}
+            for engagement in engagements_at_date(date, overlapping_engagements)
         ]
+
+    updater._read_engagement = _read_engagement
+
+    # See test_mora_cut_dates for details
+    cut_dates = [
+        datetime.datetime(1931, 1, 1),
+        datetime.datetime(1939, 9, 1),
+        datetime.datetime(1945, 9, 3),  # +1
+        datetime.datetime(1949, 1, 1),
+        datetime.datetime(1950, 1, 2),  # +1
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    updater.helper.find_cut_dates.return_value = cut_dates
+
+    check_filters = [
+        # Filter out special primaries
+        lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
+    ]
+
+    assert await updater._check_user(check_filters, "user_uuid") == {
+        # Only primary_uuid
+        datetime.datetime(1931, 1, 1, 0, 0): (1, 1, 1),
+        # Both primary_uuid and fixed_primary_uuid
+        datetime.datetime(1939, 9, 1, 0, 0): (2, 2, 2),
+        # Only primary_uuid
+        datetime.datetime(1945, 9, 3, 0, 0): (1, 1, 1),
+        # Both primary_uuid and special_primary_uuid
+        datetime.datetime(1949, 1, 1, 0, 0): (2, 2, 1),
+        # Only special_primary_uuid
+        datetime.datetime(1950, 1, 2, 0, 0): (1, 1, 0),
+    }
+
+
+async def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
+    fixture_data = [
+        (datetime.datetime(1931, 1, 1, 0, 0), (2, 0, 0)),
+        (datetime.datetime(1932, 1, 1, 0, 0), (2, 1, 1)),
+        (datetime.datetime(1933, 1, 1, 0, 0), (2, 2, 0)),
+        (datetime.datetime(1934, 1, 1, 0, 0), (2, 2, 1)),
+        (datetime.datetime(1935, 1, 1, 0, 0), (2, 2, 2)),
+    ]
+    # It does not normally return an ordered dict, but for testing we want a
+    # consistent order.
+
+    async def _check_user(check_filters, user_uuid):
+        return OrderedDict(fixture_data)
+
+    updater._check_user = _check_user
+
+    _, strings, user_uuids, dates = unzip(
+        [x async for x in updater._check_user_outputter([], "user_uuid")]
+    )
+
+    assert list(strings) == [
+        "No primary",
+        "",
+        "All primaries are special",
+        "Only one non-special primary",
+        "Too many primaries",
+    ]
+
+    assert list(user_uuids) == ["user_uuid"] * 5
+    assert list(dates) == list(map(itemgetter(0), fixture_data))
+
+    _, final_strings = unzip(
+        [x async for x in updater._check_user_strings([], "user_uuid")]
+    )
+    assert list(final_strings) == [
+        "No primary for user_uuid at 1931-01-01",
+        " for user_uuid at 1932-01-01",
+        "All primaries are special for user_uuid at 1933-01-01",
+        "Only one non-special primary for user_uuid at 1934-01-01",
+        "Too many primaries for user_uuid at 1935-01-01",
+    ]
+
+
+async def test_recalculate_no_engagements(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest,
+):
+    """Test that no engagements mean no changes and no attempted updates."""
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    recalculate_updater._ensure_primary.assert_not_called()
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(st.sampled_from(["primary_uuid", "fixed_primary_uuid"]))
+async def test_recalculate_single_engagement_already_primary(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest, old_primary
+):
+    """Test that a primary engagement is still primary after recalculate."""
+    cut_dates = [
+        datetime.datetime(2930, 1, 1),
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    recalculate_updater.helper.find_cut_dates.return_value = cut_dates
+
+    engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
+
+    async def _read_engagement(user_uuid, date):
+        return [engagement]
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    recalculate_updater._ensure_primary.assert_called_with(
+        engagement, old_primary, {"from": "2930-01-01", "to": None}
+    )
+    recalculate_updater.helper._mo_post.assert_not_called()
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(st.sampled_from(["non_primary_uuid", "unrelated_uuid"]))
+async def test_recalculate_single_engagement_becoming_primary(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest, old_primary
+):
+    """Test that a non-primary engagement becomes primary after recalculate."""
+    cut_dates = [
+        datetime.datetime(2930, 1, 1),
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    recalculate_updater.helper.find_cut_dates.return_value = cut_dates
+
+    engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
+
+    async def _read_engagement(user_uuid, date):
+        return [engagement]
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
+    recalculate_updater._ensure_primary.assert_called_with(
+        engagement, "primary_uuid", {"from": "2930-01-01", "to": None}
+    )
+    recalculate_updater.helper._mo_post.assert_called_with(
+        "details/edit",
+        {
+            "type": "engagement",
+            "uuid": "engagement_uuid",
+            "data": {
+                "primary": {"uuid": "primary_uuid"},
+                "validity": {"from": "2930-01-01", "to": None},
+            },
+        },
+    )
+
+
+async def test_recalculate_multiple_engagements(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest,
+):
+    """Test that non-primary engagements yield one primary after recalculate.
+
+    Note: which one is subject to the _find_primary method, the test one simply
+          picks the first one in the provided list.
+    """
+    engagements = [
+        {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
+        {"uuid": "engagement_uuid_2", "primary": {"uuid": "non_primary_uuid"}},
+    ]
+
+    cut_dates = [
+        datetime.datetime(2930, 1, 1),
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    recalculate_updater.helper.find_cut_dates.return_value = cut_dates
+
+    async def _read_engagement(user_uuid, date):
         return engagements
 
-    def test_mora_cut_dates(self):
-        """Test that mora cut-dates work as expected."""
-        from os2mo_helpers.mora_helpers import MoraHelper
+    recalculate_updater._read_engagement = _read_engagement
 
-        mora_helper = MoraHelper()
-        mora_helper.read_user_engagement = MagicMock()
-        mora_helper.read_user_engagement.return_value = self.engagements_fixture()
-
-        cut_dates = mora_helper.find_cut_dates("user_uuid")
-
-        # Expected data derived from engagements_fixture
-        self.assertEqual(
-            cut_dates,
-            [
-                datetime.datetime(1931, 1, 1),
-                datetime.datetime(1939, 9, 1),
-                datetime.datetime(1945, 9, 3),  # +1
-                datetime.datetime(1949, 1, 1),
-                datetime.datetime(1950, 1, 2),  # +1
-                datetime.datetime(9999, 12, 30, 0, 0),
-            ],
-        )
-
-    def test_engagements_at_date(self):
-        """Test that engagements_at_date works as expected."""
-        engagements = self.engagements_fixture()
-        # Expected data derived from engagements_fixture
-        engagements_at_date_tests = {
-            datetime.datetime(1930, 1, 1): [],
-            datetime.datetime(1931, 2, 1): ["primary_uuid"],
-            datetime.datetime(1938, 10, 1): ["primary_uuid"],
-            datetime.datetime(1939, 10, 1): ["primary_uuid", "fixed_primary_uuid"],
-            datetime.datetime(1945, 8, 1): ["primary_uuid", "fixed_primary_uuid"],
-            datetime.datetime(1946, 8, 1): ["primary_uuid"],
-            datetime.datetime(1948, 2, 1): ["primary_uuid"],
-            datetime.datetime(1949, 2, 1): ["primary_uuid", "special_primary_uuid"],
-            datetime.datetime(1951, 2, 1): ["special_primary_uuid"],
-        }
-        for date, expected in engagements_at_date_tests.items():
-            filtered_engagements = engagements_at_date(date, engagements)
-            engagement_uuids = list(map(itemgetter("uuid"), filtered_engagements))
-            self.assertEqual(engagement_uuids, expected)
-
-    def test_check_user_overlapping(self):
-        """Test the result of running _check_user on overlapping engagements."""
-        # See test_engagement_at_date for details
-        engagements = self.engagements_fixture()
-        self.updater._read_engagement = lambda user_uuid, date: [
-            {"primary": {"uuid": engagement["uuid"]}}
-            for engagement in engagements_at_date(date, engagements)
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 1}
+    recalculate_updater._ensure_primary.assert_has_calls(
+        [
+            call(engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}),
+            call(
+                engagements[1],
+                "non_primary_uuid",
+                {"from": "2930-01-01", "to": None},
+            ),
         ]
-
-        # See test_mora_cut_dates for details
-        cut_dates = [
-            datetime.datetime(1931, 1, 1),
-            datetime.datetime(1939, 9, 1),
-            datetime.datetime(1945, 9, 3),  # +1
-            datetime.datetime(1949, 1, 1),
-            datetime.datetime(1950, 1, 2),  # +1
-            datetime.datetime(9999, 12, 30, 0, 0),
-        ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        check_filters = [
-            # Filter out special primaries
-            lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
-        ]
-
-        self.assertEqual(
-            self.updater._check_user(check_filters, "user_uuid"),
-            {
-                # Only primary_uuid
-                datetime.datetime(1931, 1, 1, 0, 0): (1, 1, 1),
-                # Both primary_uuid and fixed_primary_uuid
-                datetime.datetime(1939, 9, 1, 0, 0): (2, 2, 2),
-                # Only primary_uuid
-                datetime.datetime(1945, 9, 3, 0, 0): (1, 1, 1),
-                # Both primary_uuid and special_primary_uuid
-                datetime.datetime(1949, 1, 1, 0, 0): (2, 2, 1),
-                # Only special_primary_uuid
-                datetime.datetime(1950, 1, 2, 0, 0): (1, 1, 0),
+    )
+    # Only one call, as non_primary is already non_primary
+    recalculate_updater.helper._mo_post.assert_called_with(
+        "details/edit",
+        {
+            "type": "engagement",
+            "uuid": "engagement_uuid_1",
+            "data": {
+                "primary": {"uuid": "primary_uuid"},
+                "validity": {"from": "2930-01-01", "to": None},
             },
-        )
+        },
+    )
 
-    def test_check_user_outputter(self):
-        fixture_data = [
-            (datetime.datetime(1931, 1, 1, 0, 0), (2, 0, 0)),
-            (datetime.datetime(1932, 1, 1, 0, 0), (2, 1, 1)),
-            (datetime.datetime(1933, 1, 1, 0, 0), (2, 2, 0)),
-            (datetime.datetime(1934, 1, 1, 0, 0), (2, 2, 1)),
-            (datetime.datetime(1935, 1, 1, 0, 0), (2, 2, 2)),
+
+async def test_recalculate_multiple_engagements_wrong_primary(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest,
+):
+    """Test that opposite primary engagements yield two after changes.
+
+    Note: which one is subject to the _find_primary method, the test one simply
+          picks the first one in the provided list.
+    """
+    engagements = [
+        {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
+        {"uuid": "engagement_uuid_2", "primary": {"uuid": "primary_uuid"}},
+    ]
+
+    cut_dates = [
+        datetime.datetime(2930, 1, 1),
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    recalculate_updater.helper.find_cut_dates.return_value = cut_dates
+
+    async def _read_engagement(user_uuid, date):
+        return engagements
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 2}
+    recalculate_updater._ensure_primary.assert_has_calls(
+        [
+            call(engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}),
+            call(
+                engagements[1],
+                "non_primary_uuid",
+                {"from": "2930-01-01", "to": None},
+            ),
         ]
-        # It does not normally return an ordered dict, but for testing we want a
-        # consistent order.
-        self.updater._check_user = lambda check_filters, user_uuid: OrderedDict(
-            fixture_data
-        )
-
-        _, strings, user_uuids, dates = unzip(
-            self.updater._check_user_outputter([], "user_uuid")
-        )
-
-        self.assertEqual(
-            list(strings),
-            [
-                "No primary",
-                "",
-                "All primaries are special",
-                "Only one non-special primary",
-                "Too many primaries",
-            ],
-        )
-        self.assertEqual(list(user_uuids), ["user_uuid"] * 5)
-        self.assertEqual(list(dates), list(map(itemgetter(0), fixture_data)))
-
-        _, final_strings = unzip(self.updater._check_user_strings([], "user_uuid"))
-        self.assertEqual(
-            list(final_strings),
-            [
-                "No primary for user_uuid at 1931-01-01",
-                " for user_uuid at 1932-01-01",
-                "All primaries are special for user_uuid at 1933-01-01",
-                "Only one non-special primary for user_uuid at 1934-01-01",
-                "Too many primaries for user_uuid at 1935-01-01",
-            ],
-        )
-
-
-class Test_recalculate_user(TestCase):
-    """Test the recalculate_user functions."""
-
-    def setUp(self):
-        self.updater = MOPrimaryEngagementUpdaterTest(DUMMY_SETTINGS)
-        self.updater.helper._mo_post.return_value = AttrDict(
-            {
-                "status_code": 200,
-            }
-        )
-        self.updater._ensure_primary = MagicMock(wraps=self.updater._ensure_primary)
-
-    def test_create(self):
-        """Test that setUp runs without using it for anything."""
-        pass
-
-    def test_recalculate_no_engagements(self):
-        """Test that no engagements mean no changes and no attempted updates."""
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 0})
-        self.updater._ensure_primary.assert_not_called()
-
-    @given(st.sampled_from(["primary_uuid", "fixed_primary_uuid"]))
-    def test_recalculate_single_engagement_already_primary(self, old_primary):
-        """Test that a primary engagement is still primary after recalculate."""
-        cut_dates = [
-            datetime.datetime(2930, 1, 1),
-            datetime.datetime(9999, 12, 30, 0, 0),
-        ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
-        self.updater._read_engagement = lambda user_uuid, date: [engagement]
-
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 0})
-        self.updater._ensure_primary.assert_called_with(
-            engagement, old_primary, {"from": "2930-01-01", "to": None}
-        )
-        self.updater.helper._mo_post.assert_not_called()
-
-    @given(st.sampled_from(["non_primary_uuid", "unrelated_uuid"]))
-    def test_recalculate_single_engagement_becoming_primary(self, old_primary):
-        """Test that a non-primary engagement becomes primary after recalculate."""
-        cut_dates = [
-            datetime.datetime(2930, 1, 1),
-            datetime.datetime(9999, 12, 30, 0, 0),
-        ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        engagement = {"uuid": "engagement_uuid", "primary": {"uuid": old_primary}}
-        self.updater._read_engagement = lambda user_uuid, date: [engagement]
-
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 1})
-        self.updater._ensure_primary.assert_called_with(
-            engagement, "primary_uuid", {"from": "2930-01-01", "to": None}
-        )
-        self.updater.helper._mo_post.assert_called_with(
-            "details/edit",
-            {
-                "type": "engagement",
-                "uuid": "engagement_uuid",
-                "data": {
-                    "primary": {"uuid": "primary_uuid"},
-                    "validity": {"from": "2930-01-01", "to": None},
-                },
-            },
-        )
-
-    def test_recalculate_multiple_engagements(self):
-        """Test that non-primary engagements yield one primary after recalculate.
-
-        Note: which one is subject to the _find_primary method, the test one simply
-              picks the first one in the provided list.
-        """
-        engagements = [
-            {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
-            {"uuid": "engagement_uuid_2", "primary": {"uuid": "non_primary_uuid"}},
-        ]
-
-        cut_dates = [
-            datetime.datetime(2930, 1, 1),
-            datetime.datetime(9999, 12, 30, 0, 0),
-        ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        self.updater._read_engagement = lambda user_uuid, date: engagements
-
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 1})
-        self.updater._ensure_primary.assert_has_calls(
-            [
-                call(
-                    engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}
-                ),
-                call(
-                    engagements[1],
-                    "non_primary_uuid",
-                    {"from": "2930-01-01", "to": None},
-                ),
-            ]
-        )
-        # Only one call, as non_primary is already non_primary
-        self.updater.helper._mo_post.assert_called_with(
-            "details/edit",
-            {
-                "type": "engagement",
-                "uuid": "engagement_uuid_1",
-                "data": {
-                    "primary": {"uuid": "primary_uuid"},
-                    "validity": {"from": "2930-01-01", "to": None},
-                },
-            },
-        )
-
-    def test_recalculate_multiple_engagements_wrong_primary(self):
-        """Test that opposite primary engagements yield two after changes.
-
-        Note: which one is subject to the _find_primary method, the test one simply
-              picks the first one in the provided list.
-        """
-        engagements = [
-            {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
-            {"uuid": "engagement_uuid_2", "primary": {"uuid": "primary_uuid"}},
-        ]
-
-        cut_dates = [
-            datetime.datetime(2930, 1, 1),
-            datetime.datetime(9999, 12, 30, 0, 0),
-        ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        self.updater._read_engagement = lambda user_uuid, date: engagements
-
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 2})
-        self.updater._ensure_primary.assert_has_calls(
-            [
-                call(
-                    engagements[0], "primary_uuid", {"from": "2930-01-01", "to": None}
-                ),
-                call(
-                    engagements[1],
-                    "non_primary_uuid",
-                    {"from": "2930-01-01", "to": None},
-                ),
-            ]
-        )
-        # Two calls, as primary is flipped for each
-        self.updater.helper._mo_post.assert_has_calls(
-            [
-                call(
-                    "details/edit",
-                    {
-                        "type": "engagement",
-                        "uuid": "engagement_uuid_1",
-                        "data": {
-                            "primary": {"uuid": "primary_uuid"},
-                            "validity": {"from": "2930-01-01", "to": None},
-                        },
+    )
+    # Two calls, as primary is flipped for each
+    recalculate_updater.helper._mo_post.assert_has_calls(
+        [
+            call(
+                "details/edit",
+                {
+                    "type": "engagement",
+                    "uuid": "engagement_uuid_1",
+                    "data": {
+                        "primary": {"uuid": "primary_uuid"},
+                        "validity": {"from": "2930-01-01", "to": None},
                     },
-                ),
-                call(
-                    "details/edit",
-                    {
-                        "type": "engagement",
-                        "uuid": "engagement_uuid_2",
-                        "data": {
-                            "primary": {"uuid": "non_primary_uuid"},
-                            "validity": {"from": "2930-01-01", "to": None},
-                        },
+                },
+            ),
+            call(
+                "details/edit",
+                {
+                    "type": "engagement",
+                    "uuid": "engagement_uuid_2",
+                    "data": {
+                        "primary": {"uuid": "non_primary_uuid"},
+                        "validity": {"from": "2930-01-01", "to": None},
                     },
-                ),
-            ]
-        )
-
-    def test_recalculate_multiple_engagements_fixed_primary(self):
-        """Test that fixed primaries overrule normal primary calculation.
-
-        Note: which one is subject to the _find_primary method, the test one simply
-              picks the first one in the provided list.
-        """
-        engagements = [
-            {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
-            {"uuid": "engagement_uuid_2", "primary": {"uuid": "fixed_primary_uuid"}},
+                },
+            ),
         ]
+    )
 
-        cut_dates = [
-            datetime.datetime(2930, 1, 1),
-            datetime.datetime(9999, 12, 30, 0, 0),
+
+async def test_recalculate_multiple_engagements_fixed_primary(
+    recalculate_updater: MOPrimaryEngagementUpdaterTest,
+):
+    """Test that fixed primaries overrule normal primary calculation.
+
+    Note: which one is subject to the _find_primary method, the test one simply
+          picks the first one in the provided list.
+    """
+    engagements = [
+        {"uuid": "engagement_uuid_1", "primary": {"uuid": "non_primary_uuid"}},
+        {"uuid": "engagement_uuid_2", "primary": {"uuid": "fixed_primary_uuid"}},
+    ]
+
+    cut_dates = [
+        datetime.datetime(2930, 1, 1),
+        datetime.datetime(9999, 12, 30, 0, 0),
+    ]
+    recalculate_updater.helper.find_cut_dates.return_value = cut_dates
+
+    async def _read_engagement(user_uuid, date):
+        return engagements
+
+    recalculate_updater._read_engagement = _read_engagement
+
+    assert await recalculate_updater.recalculate_user("user_uuid") == {"user_uuid": 0}
+    recalculate_updater._ensure_primary.assert_has_calls(
+        [
+            call(
+                engagements[0],
+                "non_primary_uuid",
+                {"from": "2930-01-01", "to": None},
+            ),
+            call(
+                engagements[1],
+                "fixed_primary_uuid",
+                {"from": "2930-01-01", "to": None},
+            ),
         ]
-        self.updater.helper.find_cut_dates.return_value = cut_dates
-
-        self.updater._read_engagement = lambda user_uuid, date: engagements
-
-        self.assertEqual(self.updater.recalculate_user("user_uuid"), {"user_uuid": 0})
-        self.updater._ensure_primary.assert_has_calls(
-            [
-                call(
-                    engagements[0],
-                    "non_primary_uuid",
-                    {"from": "2930-01-01", "to": None},
-                ),
-                call(
-                    engagements[1],
-                    "fixed_primary_uuid",
-                    {"from": "2930-01-01", "to": None},
-                ),
-            ]
-        )
-        self.updater.helper._mo_post.assert_not_called()
+    )
+    recalculate_updater.helper._mo_post.assert_not_called()
