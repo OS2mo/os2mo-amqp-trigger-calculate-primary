@@ -1,13 +1,16 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-from typing import Any
 from typing import Self
+from typing import cast
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.config import Settings
 from calculate_primary.model import ClassDict
+from calculate_primary.model import EngagementDict
+from calculate_primary.model import PrimaryClassesDict
 from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
@@ -20,7 +23,7 @@ logger = structlog.stdlib.get_logger()
 # unlikely that it will be removed from the SD-integration anyway as this
 # integration should not have the responsibility of calculating primary
 # engagements
-async def get_primary_types(helper: MoraHelper):
+async def get_primary_types(helper: MoraHelper) -> PrimaryClassesDict:
     """
     Read the engagement types from MO and match them up against the four
     known types in the SD->MO import.
@@ -54,7 +57,7 @@ async def get_primary_types(helper: MoraHelper):
     non_primary = None
     fixed_primary = None
 
-    primary_types: tuple[list[ClassDict], Any] = await helper.read_classes_in_facet(
+    primary_types: tuple[list[ClassDict], str] = await helper.read_classes_in_facet(
         "primary_type"
     )
     for primary_type in primary_types[0]:
@@ -65,22 +68,22 @@ async def get_primary_types(helper: MoraHelper):
         if primary_type["user_key"] == FIXED_PRIMARY:
             fixed_primary = primary_type["uuid"]
 
-    type_uuids = {
+    type_uuids: dict[str, str | None] = {
         "primary": primary,
         "non_primary": non_primary,
         "fixed_primary": fixed_primary,
     }
     if None in type_uuids.values():
         raise Exception("Missing primary types: {}".format(type_uuids))
-    return type_uuids
+    return cast(PrimaryClassesDict, type_uuids)
 
 
 class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
     @classmethod
-    async def create(cls, *args, **kwargs) -> Self:
-        this = await super().create(*args, **kwargs)
+    async def create(cls, settings: Settings, mora_helper: MoraHelper) -> Self:
+        this: Self = await super().create(settings, mora_helper)
 
-        def remove_missing_user_key(user_uuid, eng):
+        def remove_missing_user_key(_user_uuid: str, eng: EngagementDict) -> bool:
             return "user_key" in eng
 
         this.calculate_filters = [
@@ -89,17 +92,20 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
         return this
 
-    async def _find_primary_types(self):
+    async def _find_primary_types(self) -> tuple[PrimaryClassesDict, list[str]]:
         # Keys are; fixed_primary, primary and non-primary
         primary_types = await get_primary_types(self.helper)
-        primary = [
-            primary_types["fixed_primary"],
-            primary_types["primary"],
-        ]
+        primary = cast(
+            list[str],
+            [
+                primary_types["fixed_primary"],
+                primary_types["primary"],
+            ],
+        )
         return primary_types, primary
 
-    def _find_primary(self, mo_engagements):
-        def set_primary_score(mo_engagement):
+    def _find_primary(self, mo_engagements: list[EngagementDict]) -> str | None:
+        def set_primary_score(mo_engagement: EngagementDict) -> None:
             # Engagements with non-integer user_keys are only primary if no other engagements are present
             try:
                 mo_engagement["primary_score"] = int(mo_engagement["user_key"])
@@ -120,6 +126,9 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         primary_engagement = max(
             mo_engagements,
             # Sort first by fraction, then reversely by user_key integer
-            key=lambda eng: (eng.get("fraction") or 0, -eng["primary_score"]),
+            key=lambda eng: (
+                eng.get("fraction") or 0,
+                -cast(int, eng["primary_score"]),
+            ),
         )
         return primary_engagement["uuid"]

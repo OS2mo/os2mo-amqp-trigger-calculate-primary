@@ -4,6 +4,7 @@
 """Event-driven recalculate primary program."""
 
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 from typing import cast
 from uuid import UUID
 
@@ -47,7 +48,9 @@ async def calculate_user(updater: MOPrimaryEngagementUpdater, uuid: UUID) -> Non
 
 
 @asynccontextmanager
-async def setup_updater(settings: Settings, fastramqpi: FastRAMQPI):
+async def setup_updater(
+    settings: Settings, fastramqpi: FastRAMQPI
+) -> AsyncGenerator[None, None]:
     """
     Instantiates the correct updater implementation, based on what is configured
     in `settings.integration`.

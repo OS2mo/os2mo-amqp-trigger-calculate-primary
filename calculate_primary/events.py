@@ -32,11 +32,11 @@ async def calculate_engagement(
     )
 
     result = await mo.get_engagement_person(engagement_uuid)
-    result = only(result.objects)
-    if result is None:
+    result_obj = only(result.objects)
+    if result_obj is None:
         logger.info("No related person found.", engagement_uuid=engagement_uuid)
         return
-    uuids = {e.uuid for o in result.validities for e in o.person}
+    uuids = {e.uuid for o in result_obj.validities for e in o.person}
 
     logger.info("Found related person(s)", person_uuids=uuids)
     # An engagement can be associated with multiple employees across its lifespan, although it typically isn't done.

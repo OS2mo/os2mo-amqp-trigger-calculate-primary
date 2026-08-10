@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Magenta ApS <https://magenta.dk>
 # SPDX-License-Identifier: MPL-2.0
 from typing import Literal
+from typing import NotRequired
 from typing import TypedDict
 
 
@@ -23,6 +24,7 @@ class EngagementDict(TypedDict):
     engagement_type: EngagementTypeDict
     primary: EngagementPrimaryDict | None
     validity: ValidityDict
+    primary_score: NotRequired[int]
 
 
 class EngagementEditPayloadData(TypedDict):
@@ -39,3 +41,12 @@ class EngagementEditPayload(TypedDict):
 class ClassDict(TypedDict):
     uuid: str
     user_key: str
+
+
+class PrimaryClassesDict(TypedDict):
+    primary: str
+    non_primary: str
+    fixed_primary: str
+
+
+PrimaryTypeKey = Literal["primary", "non_primary", "fixed_primary"]

@@ -7,7 +7,9 @@ from datetime import datetime
 from datetime import timedelta
 from functools import partial
 from operator import itemgetter
-from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import Self
 from uuid import UUID
 
 import structlog
@@ -17,6 +19,8 @@ from more_itertools import pairwise
 from calculate_primary.config import Settings
 from calculate_primary.model import EngagementDict
 from calculate_primary.model import EngagementEditPayload
+from calculate_primary.model import PrimaryClassesDict
+from calculate_primary.model import PrimaryTypeKey
 from calculate_primary.model import ValidityDict
 from calculate_primary.mora_helper_shim import MoraHelper
 
@@ -45,15 +49,15 @@ class NoPrimaryFound(Exception):
 class MOPrimaryEngagementUpdater(ABC):
     settings: Settings
     helper: MoraHelper
-    calculate_filters: list[Any]
-    primary_types: dict[str, str]
+    calculate_filters: list[Callable[[str, EngagementDict], bool]]
+    primary_types: PrimaryClassesDict
     primary: list[str]
 
-    def __init__(self):
+    def __init__(self) -> None:
         raise NotImplementedError("use the async `create` constructor instead")
 
     @classmethod
-    async def create(cls, settings: Settings, mora_helper: MoraHelper):
+    async def create(cls, settings: Settings, mora_helper: MoraHelper) -> Self:
         this = cls.__new__(cls)
         this.settings = settings
         this.helper = mora_helper
@@ -77,7 +81,7 @@ class MOPrimaryEngagementUpdater(ABC):
         return mo_engagements
 
     @abstractmethod
-    async def _find_primary_types(self):
+    async def _find_primary_types(self) -> tuple[PrimaryClassesDict, list[str]]:
         """Find primary classes for the underlying implementation.
 
         Returns:
@@ -91,7 +95,7 @@ class MOPrimaryEngagementUpdater(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def _find_primary(self, mo_engagements):
+    def _find_primary(self, mo_engagements: list[EngagementDict]) -> str | None:
         """Decide which of the engagements in mo_engagements is the primary one.
 
         This method does not need to handle fixed_primaries as the method will
@@ -105,7 +109,9 @@ class MOPrimaryEngagementUpdater(ABC):
         """
         raise NotImplementedError()
 
-    def _predicate_primary_is(self, primary_type_key, engagement):
+    def _predicate_primary_is(
+        self, primary_type_key: PrimaryTypeKey, engagement: EngagementDict
+    ) -> bool:
         """Predicate on an engagements primary type.
 
         Example:
@@ -127,6 +133,7 @@ class MOPrimaryEngagementUpdater(ABC):
         if not engagement.get("primary"):
             return False
 
+        assert engagement["primary"] is not None
         if engagement["primary"]["uuid"] == self.primary_types[primary_type_key]:
             logger.info(
                 "Engagement {} is {}".format(engagement["uuid"], primary_type_key)
@@ -134,7 +141,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return True
         return False
 
-    def _decide_primary(self, mo_engagements):
+    def _decide_primary(
+        self, mo_engagements: list[EngagementDict]
+    ) -> tuple[str, PrimaryTypeKey]:
         """Decide which of the engagements in mo_engagements is the primary one.
 
         Args:
@@ -172,7 +181,10 @@ class MOPrimaryEngagementUpdater(ABC):
         raise NoPrimaryFound()
 
     async def _ensure_primary(
-        self, engagement: EngagementDict, primary_type_uuid: str, validity
+        self,
+        engagement: EngagementDict,
+        primary_type_uuid: str,
+        validity: ValidityDict,
     ) -> bool:
         """Ensure that engagement has the right primary_type.
 
@@ -189,6 +201,7 @@ class MOPrimaryEngagementUpdater(ABC):
             boolean: True if a change is made, False otherwise.
         """
         # Check if the required primary type is already set
+        assert engagement["primary"] is not None
         if engagement["primary"]["uuid"] == primary_type_uuid:
             logger.info(
                 "No update as primary type is not changed: {}".format(validity["from"])
@@ -233,7 +246,9 @@ class MOPrimaryEngagementUpdater(ABC):
                 return engagement
 
             # Fetch engagements
-            mo_engagements = await self._read_engagement(user_uuid, date)
+            mo_engagements: Iterable[EngagementDict] = await self._read_engagement(
+                user_uuid, date
+            )
             # Filter unwanted engagements
             for filter_func in self.calculate_filters:
                 mo_engagements = filter(partial(filter_func, user_uuid), mo_engagements)
@@ -279,6 +294,7 @@ class MOPrimaryEngagementUpdater(ABC):
             except NoPrimaryFound:
                 logger.warning(f"Unable to determine primary for {user_uuid}")
                 primary_uuid = None
+                primary_type_key = None
 
             validity = calculate_validity(start, end)
 
@@ -290,6 +306,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 # Only the primary engagement is marked non_primary. The actual type
                 # is simply the one provided by _decide_primary.
                 if engagement["uuid"] == primary_uuid:
+                    assert primary_type_key is not None
                     primary_type_uuid = self.primary_types[primary_type_key]
 
                 changed = await self._ensure_primary(
@@ -302,7 +319,7 @@ class MOPrimaryEngagementUpdater(ABC):
         return return_dict
 
 
-def get_engagement_updater(integration):
+def get_engagement_updater(integration: str) -> type[MOPrimaryEngagementUpdater]:
     if integration == "DEFAULT":
         from calculate_primary.default import DefaultPrimaryEngagementUpdater
 
