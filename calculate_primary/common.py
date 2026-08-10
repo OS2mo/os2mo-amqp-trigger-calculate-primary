@@ -232,9 +232,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 return False
         return True
 
-    async def recalculate_user(
-        self, user_uuid: UUID | str, no_past=False
-    ) -> dict[str, int]:
+    async def recalculate_user(self, user_uuid: UUID | str) -> dict[str, int]:
         """(Re)calculate primary engagement for the entire history the user."""
         user_uuid = str(user_uuid)
 
@@ -257,9 +255,7 @@ class MOPrimaryEngagementUpdater(ABC):
             mo_engagements = await self._read_engagement(user_uuid, date)
             # Filter unwanted engagements
             for filter_func in self.calculate_filters:
-                mo_engagements = filter(
-                    partial(filter_func, user_uuid, no_past), mo_engagements
-                )
+                mo_engagements = filter(partial(filter_func, user_uuid), mo_engagements)
             # Enrich engagements with primary, if required
             mo_engagements = map(ensure_primary, mo_engagements)
             mo_engagements = list(mo_engagements)
@@ -284,9 +280,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # Find a list of dates with changes in engagement, and for each change
         # decide which engagement is the primary between that and the next change.
-        date_list: list[datetime] = await self.helper.find_cut_dates(
-            user_uuid, no_past=no_past
-        )
+        date_list: list[datetime] = await self.helper.find_cut_dates(user_uuid)
         for start, end in pairwise(date_list):
             logger.info("Recalculate primary, date: {}".format(start))
 

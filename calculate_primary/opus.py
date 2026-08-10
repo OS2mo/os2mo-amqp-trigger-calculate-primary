@@ -23,7 +23,7 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         # settings) and secondly by job_id.
         # TODO: Check that configured eng_types exist
 
-        def remove_missing_user_key(user_uuid, no_past, engagement):
+        def remove_missing_user_key(user_uuid, engagement):
             return "user_key" in engagement
 
         this.calculate_filters = [

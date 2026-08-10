@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-import datetime
 from typing import Any
 from typing import Self
 
@@ -19,15 +18,8 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
     async def create(cls, *args, **kwargs) -> Self:
         this = await super().create(*args, **kwargs)
 
-        def remove_past(user_uuid, no_past, eng):
-            if no_past and eng["validity"]["to"]:
-                to = datetime.datetime.strptime(eng["validity"]["to"], "%Y-%m-%d")
-                if to < datetime.datetime.now():
-                    return False
-            return True
-
         this.check_filters = []
-        this.calculate_filters = [remove_past]
+        this.calculate_filters = []
 
         return this
 
