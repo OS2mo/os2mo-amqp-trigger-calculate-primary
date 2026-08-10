@@ -23,22 +23,6 @@ from calculate_primary.mora_helper_shim import MoraHelper
 logger = structlog.stdlib.get_logger()
 
 
-def get_engagement_updater(integration):
-    if integration == "DEFAULT":
-        from calculate_primary.default import DefaultPrimaryEngagementUpdater
-
-        return DefaultPrimaryEngagementUpdater
-    if integration == "SD":
-        from calculate_primary.sd import SDPrimaryEngagementUpdater
-
-        return SDPrimaryEngagementUpdater
-    if integration == "OPUS":
-        from calculate_primary.opus import OPUSPrimaryEngagementUpdater
-
-        return OPUSPrimaryEngagementUpdater
-    raise NotImplementedError("Unexpected integration: " + str(integration))
-
-
 class MultipleFixedPrimaries(Exception):
     """Thrown when multiple fixed primaries are found doing recalculate.
 
@@ -316,3 +300,19 @@ class MOPrimaryEngagementUpdater(ABC):
 
         return_dict = {user_uuid: number_of_edits}
         return return_dict
+
+
+def get_engagement_updater(integration):
+    if integration == "DEFAULT":
+        from calculate_primary.default import DefaultPrimaryEngagementUpdater
+
+        return DefaultPrimaryEngagementUpdater
+    if integration == "SD":
+        from calculate_primary.sd import SDPrimaryEngagementUpdater
+
+        return SDPrimaryEngagementUpdater
+    if integration == "OPUS":
+        from calculate_primary.opus import OPUSPrimaryEngagementUpdater
+
+        return OPUSPrimaryEngagementUpdater
+    raise NotImplementedError("Unexpected integration: " + str(integration))
