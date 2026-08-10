@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 from typing import cast
 from uuid import UUID
 
+import structlog
 from fastramqpi.main import FastRAMQPI
 from prometheus_client import Counter
 from prometheus_client import Gauge
@@ -17,6 +18,8 @@ from calculate_primary.common import get_engagement_updater
 from calculate_primary.config import Settings
 from calculate_primary.depends import GraphQLClient
 from calculate_primary.mora_helper_shim import MoraHelper
+
+logger = structlog.stdlib.get_logger()
 
 edit_counter = Counter("recalculate_edit", "Number of edits made")
 no_edit_counter = Counter("recalculate_no_edit", "Number of noops made")
@@ -37,7 +40,7 @@ async def calculate_user(updater: MOPrimaryEngagementUpdater, uuid: UUID) -> Non
     Returns:
         None
     """
-    print(f"Recalculating user: {uuid}")
+    logger.info("Recalculating user", uuid=str(uuid))
     last_processing.set_to_current_time()
     updates = await updater.recalculate_user(uuid)
     # Update edit metrics
@@ -60,14 +63,14 @@ async def setup_updater(
     assert "graphql_client" in context
     gql_client = cast(GraphQLClient, context["graphql_client"])
 
-    print(f"Acquiring updater: {settings.integration}")
+    logger.info("Acquiring updater", integration=settings.integration)
     updater_class = get_engagement_updater(settings.integration)
-    print(f"Got class: {updater_class}")
+    logger.info("Got class", updater_class=updater_class)
     mora_helper = MoraHelper(gql_client)
     updater: MOPrimaryEngagementUpdater = await updater_class.create(
         settings, mora_helper
     )
-    print(f"Got object: {updater}")
+    logger.info("Got object", updater=updater)
     fastramqpi.add_context(updater=updater)
 
     yield
