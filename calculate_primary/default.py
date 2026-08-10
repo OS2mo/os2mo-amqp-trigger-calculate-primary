@@ -30,7 +30,7 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
     ) -> tuple[PrimaryClassesDict, list[str]]:
         """
         Read the engagement types from MO and match them up against the three
-        known types in the OPUS->MO import.
+        known types in the MO import.
         :param helper: An instance of mora-helpers.
         :return: A dict matching up the engagement types with LoRa class uuids.
         """
