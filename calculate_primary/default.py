@@ -18,7 +18,6 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
     async def create(cls, *args, **kwargs) -> Self:
         this = await super().create(*args, **kwargs)
 
-        this.check_filters = []
         this.calculate_filters = []
 
         return this

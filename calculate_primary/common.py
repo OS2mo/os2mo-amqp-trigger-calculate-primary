@@ -61,7 +61,6 @@ class NoPrimaryFound(Exception):
 class MOPrimaryEngagementUpdater(ABC):
     settings: Settings
     helper: MoraHelper
-    check_filters: list[Any]
     calculate_filters: list[Any]
     primary_types: dict[str, str]
     primary: list[str]
@@ -75,9 +74,7 @@ class MOPrimaryEngagementUpdater(ABC):
         this.settings = settings
         this.helper = mora_helper
 
-        # List of engagement filters to apply to check / recalculate respectively
         # NOTE: Should be overridden by subclasses
-        this.check_filters = []
         this.calculate_filters = []
 
         this.primary_types, this.primary = await this._find_primary_types()
