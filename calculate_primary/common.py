@@ -7,37 +7,24 @@ from datetime import datetime
 from datetime import timedelta
 from functools import partial
 from operator import itemgetter
-from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import Self
 from uuid import UUID
 
 import structlog
-from more_itertools import ilen
 from more_itertools import only
 from more_itertools import pairwise
 
 from calculate_primary.config import Settings
 from calculate_primary.model import EngagementDict
 from calculate_primary.model import EngagementEditPayload
+from calculate_primary.model import PrimaryClassesDict
+from calculate_primary.model import PrimaryTypeKey
 from calculate_primary.model import ValidityDict
 from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
-
-
-def get_engagement_updater(integration):
-    if integration == "DEFAULT":
-        from calculate_primary.default import DefaultPrimaryEngagementUpdater
-
-        return DefaultPrimaryEngagementUpdater
-    if integration == "SD":
-        from calculate_primary.sd import SDPrimaryEngagementUpdater
-
-        return SDPrimaryEngagementUpdater
-    if integration == "OPUS":
-        from calculate_primary.opus import OPUSPrimaryEngagementUpdater
-
-        return OPUSPrimaryEngagementUpdater
-    raise NotImplementedError("Unexpected integration: " + str(integration))
 
 
 class MultipleFixedPrimaries(Exception):
@@ -59,31 +46,23 @@ class NoPrimaryFound(Exception):
     pass
 
 
-def noop(*args, **kwargs):
-    """Noop function, which consumes arguments and does nothing."""
-    pass
-
-
 class MOPrimaryEngagementUpdater(ABC):
     settings: Settings
     helper: MoraHelper
-    check_filters: list[Any]
-    calculate_filters: list[Any]
-    primary_types: dict[str, str]
+    calculate_filters: list[Callable[[str, EngagementDict], bool]]
+    primary_types: PrimaryClassesDict
     primary: list[str]
 
-    def __init__(self):
+    def __init__(self) -> None:
         raise NotImplementedError("use the async `create` constructor instead")
 
     @classmethod
-    async def create(cls, settings: Settings, mora_helper: MoraHelper):
+    async def create(cls, settings: Settings, mora_helper: MoraHelper) -> Self:
         this = cls.__new__(cls)
         this.settings = settings
         this.helper = mora_helper
 
-        # List of engagement filters to apply to check / recalculate respectively
         # NOTE: Should be overridden by subclasses
-        this.check_filters = []
         this.calculate_filters = []
 
         this.primary_types, this.primary = await this._find_primary_types()
@@ -102,7 +81,7 @@ class MOPrimaryEngagementUpdater(ABC):
         return mo_engagements
 
     @abstractmethod
-    async def _find_primary_types(self):
+    async def _find_primary_types(self) -> tuple[PrimaryClassesDict, list[str]]:
         """Find primary classes for the underlying implementation.
 
         Returns:
@@ -116,7 +95,7 @@ class MOPrimaryEngagementUpdater(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def _find_primary(self, mo_engagements):
+    def _find_primary(self, mo_engagements: list[EngagementDict]) -> str | None:
         """Decide which of the engagements in mo_engagements is the primary one.
 
         This method does not need to handle fixed_primaries as the method will
@@ -130,7 +109,9 @@ class MOPrimaryEngagementUpdater(ABC):
         """
         raise NotImplementedError()
 
-    def _predicate_primary_is(self, primary_type_key, engagement):
+    def _predicate_primary_is(
+        self, primary_type_key: PrimaryTypeKey, engagement: EngagementDict
+    ) -> bool:
         """Predicate on an engagements primary type.
 
         Example:
@@ -152,6 +133,7 @@ class MOPrimaryEngagementUpdater(ABC):
         if not engagement.get("primary"):
             return False
 
+        assert engagement["primary"] is not None
         if engagement["primary"]["uuid"] == self.primary_types[primary_type_key]:
             logger.info(
                 "Engagement {} is {}".format(engagement["uuid"], primary_type_key)
@@ -159,123 +141,9 @@ class MOPrimaryEngagementUpdater(ABC):
             return True
         return False
 
-    def _count_primary_engagements(
-        self, check_filters, user_uuid, mo_engagements: list[EngagementDict]
-    ):
-        """Count number of primaries.
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to who owns the engagements.
-            engagements: A list of MO engagements to count primaries from.
-
-        Returns:
-            3-tuple:
-                engagement_count: Number of engagements processed.
-                primary_count: Number of primaries found.
-                filtered_primary_count: Number of primaries passing check_filters.
-        """
-        # Count number of engagements
-        mo_engagements = list(mo_engagements)
-        engagement_count = len(mo_engagements)
-
-        # Count number of primary engagements, by filtering on self.primary
-        primary_mo_engagements = list(
-            filter(
-                lambda eng: eng["primary"]["uuid"] in self.primary,
-                mo_engagements,
-            )
-        )
-        primary_count = len(primary_mo_engagements)
-
-        # Count number of primary engagements, by filtering out special primaries
-        # What consistutes a 'special primary' depend on the subclass implementation
-        for filter_func in check_filters:
-            primary_mo_engagements = filter(
-                partial(filter_func, user_uuid), primary_mo_engagements
-            )
-        filtered_primary_count = ilen(primary_mo_engagements)
-
-        return engagement_count, primary_count, filtered_primary_count
-
-    async def _check_user(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Dictionary:
-                key: Date at which the value is valid.
-                value: A 3-tuple, from _count_primary_engagements.
-        """
-        # List of cut dates, excluding the very last one
-        date_list: list[datetime] = await self.helper.find_cut_dates(uuid=user_uuid)
-        date_list = date_list[:-1]
-        # Map all our dates, to their corresponding engagements.
-        mo_engagements = [
-            await self._read_engagement(user_uuid, date) for date in date_list
-        ]
-        # Map mo_engagements to primary counts
-        primary_counts = (
-            self._count_primary_engagements(check_filters, user_uuid, engs)
-            for engs in mo_engagements
-        )
-        # Create dicts from cut_dates --> primary_counts
-        return dict(zip(date_list, primary_counts))
-
-    async def _check_user_outputter(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Generator of output 4-tuples:
-                outputter: Function to output strings to
-                string: The base output string
-                user_uuid: User UUID for the output string
-                date: Date for the output string
-        """
-
-        def to_output(e_count, p_count, fp_count):
-            if e_count == 0:
-                return (noop, "")
-            if p_count == 0:
-                return (print, "No primary")
-            if p_count == 1:
-                return (noop, "")
-            if fp_count == 0:
-                return (logger.info, "All primaries are special")
-            if fp_count == 1:
-                return (logger.info, "Only one non-special primary")
-            return (print, "Too many primaries")
-
-        user_results = await self._check_user(check_filters, user_uuid)
-        for date, (e_count, p_count, fp_count) in user_results.items():
-            outputter, string = to_output(e_count, p_count, fp_count)
-            yield outputter, string, user_uuid, date
-
-    async def _check_user_strings(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Generator of output 2-tuples:
-                outputter: Function to output strings to
-                string: Formatted output string
-        """
-        outputs = self._check_user_outputter(check_filters, user_uuid)
-        async for outputter, string, user_uuid, date in outputs:
-            final_string = string + " for {} at {}".format(user_uuid, date.date())
-            yield outputter, final_string
-
-    def _decide_primary(self, mo_engagements):
+    def _decide_primary(
+        self, mo_engagements: list[EngagementDict]
+    ) -> tuple[str, PrimaryTypeKey]:
         """Decide which of the engagements in mo_engagements is the primary one.
 
         Args:
@@ -313,7 +181,10 @@ class MOPrimaryEngagementUpdater(ABC):
         raise NoPrimaryFound()
 
     async def _ensure_primary(
-        self, engagement: EngagementDict, primary_type_uuid: str, validity
+        self,
+        engagement: EngagementDict,
+        primary_type_uuid: str,
+        validity: ValidityDict,
     ) -> bool:
         """Ensure that engagement has the right primary_type.
 
@@ -330,6 +201,7 @@ class MOPrimaryEngagementUpdater(ABC):
             boolean: True if a change is made, False otherwise.
         """
         # Check if the required primary type is already set
+        assert engagement["primary"] is not None
         if engagement["primary"]["uuid"] == primary_type_uuid:
             logger.info(
                 "No update as primary type is not changed: {}".format(validity["from"])
@@ -354,9 +226,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 return False
         return True
 
-    async def recalculate_user(
-        self, user_uuid: UUID | str, no_past=False
-    ) -> dict[str, int]:
+    async def recalculate_user(self, user_uuid: UUID | str) -> dict[str, int]:
         """(Re)calculate primary engagement for the entire history the user."""
         user_uuid = str(user_uuid)
 
@@ -376,12 +246,12 @@ class MOPrimaryEngagementUpdater(ABC):
                 return engagement
 
             # Fetch engagements
-            mo_engagements = await self._read_engagement(user_uuid, date)
+            mo_engagements: Iterable[EngagementDict] = await self._read_engagement(
+                user_uuid, date
+            )
             # Filter unwanted engagements
             for filter_func in self.calculate_filters:
-                mo_engagements = filter(
-                    partial(filter_func, user_uuid, no_past), mo_engagements
-                )
+                mo_engagements = filter(partial(filter_func, user_uuid), mo_engagements)
             # Enrich engagements with primary, if required
             mo_engagements = map(ensure_primary, mo_engagements)
             mo_engagements = list(mo_engagements)
@@ -406,9 +276,7 @@ class MOPrimaryEngagementUpdater(ABC):
 
         # Find a list of dates with changes in engagement, and for each change
         # decide which engagement is the primary between that and the next change.
-        date_list: list[datetime] = await self.helper.find_cut_dates(
-            user_uuid, no_past=no_past
-        )
+        date_list: list[datetime] = await self.helper.find_cut_dates(user_uuid)
         for start, end in pairwise(date_list):
             logger.info("Recalculate primary, date: {}".format(start))
 
@@ -426,6 +294,7 @@ class MOPrimaryEngagementUpdater(ABC):
             except NoPrimaryFound:
                 logger.warning(f"Unable to determine primary for {user_uuid}")
                 primary_uuid = None
+                primary_type_key = None
 
             validity = calculate_validity(start, end)
 
@@ -437,6 +306,7 @@ class MOPrimaryEngagementUpdater(ABC):
                 # Only the primary engagement is marked non_primary. The actual type
                 # is simply the one provided by _decide_primary.
                 if engagement["uuid"] == primary_uuid:
+                    assert primary_type_key is not None
                     primary_type_uuid = self.primary_types[primary_type_key]
 
                 changed = await self._ensure_primary(
@@ -447,3 +317,19 @@ class MOPrimaryEngagementUpdater(ABC):
 
         return_dict = {user_uuid: number_of_edits}
         return return_dict
+
+
+def get_engagement_updater(integration: str) -> type[MOPrimaryEngagementUpdater]:
+    if integration == "DEFAULT":
+        from calculate_primary.default import DefaultPrimaryEngagementUpdater
+
+        return DefaultPrimaryEngagementUpdater
+    if integration == "SD":
+        from calculate_primary.sd import SDPrimaryEngagementUpdater
+
+        return SDPrimaryEngagementUpdater
+    if integration == "OPUS":
+        from calculate_primary.opus import OPUSPrimaryEngagementUpdater
+
+        return OPUSPrimaryEngagementUpdater
+    raise NotImplementedError("Unexpected integration: " + str(integration))

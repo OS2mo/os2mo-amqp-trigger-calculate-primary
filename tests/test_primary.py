@@ -2,9 +2,6 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 import datetime
-from collections import OrderedDict
-from operator import itemgetter
-from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import call
@@ -14,7 +11,6 @@ import pytest
 from hypothesis import HealthCheck
 from hypothesis import given
 from hypothesis import settings
-from more_itertools import unzip
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
 
@@ -30,34 +26,6 @@ class AttrDict(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__  # type: ignore
     __delattr__ = dict.__delitem__  # type: ignore
-
-
-def engagements_at_date(date, engagements):
-    """Filter engagements to only show ones valid at date.
-
-    This is supposed to emulate how MO handles the `at` parameter.
-
-    Args:
-        date: The date to check validities against.
-        engagements: The list of engagements to filter
-
-    Returns:
-        Filtered list of engagements.
-    """
-
-    def check_from_date(engagement):
-        from_date = datetime.datetime.strptime(
-            engagement["validity"]["from"], "%Y-%m-%d"
-        )
-        return from_date <= date
-
-    def check_to_date(engagement):
-        if engagement["validity"]["to"] is None:
-            return True
-        to_date = datetime.datetime.strptime(engagement["validity"]["to"], "%Y-%m-%d")
-        return date <= to_date
-
-    return list(filter(check_from_date, filter(check_to_date, engagements)))
 
 
 class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
@@ -84,11 +52,6 @@ class MOPrimaryEngagementUpdaterTest(MOPrimaryEngagementUpdater):
 
 
 @pytest.fixture
-async def updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
-    return await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
-
-
-@pytest.fixture
 async def recalculate_updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
     updater = await MOPrimaryEngagementUpdaterTest.create(dummy_settings, AsyncMock())
     updater.helper._mo_post.return_value = AttrDict(
@@ -98,202 +61,6 @@ async def recalculate_updater(dummy_settings) -> MOPrimaryEngagementUpdaterTest:
     )
     updater._ensure_primary = MagicMock(wraps=updater._ensure_primary)
     return updater
-
-
-@pytest.fixture
-def overlapping_engagements() -> list[dict[str, Any]]:
-    """Engagement fixture for testing overlapping engagements."""
-    engagements = [
-        {
-            "validity": {
-                "from": "1931-1-1",
-                "to": "1950-1-1",
-            },
-            "uuid": "primary_uuid",
-        },
-        {
-            "validity": {
-                "from": "1939-9-1",
-                "to": "1945-9-2",
-            },
-            "uuid": "fixed_primary_uuid",
-        },
-        {
-            "validity": {
-                "from": "1949-1-1",
-                "to": None,
-            },
-            "uuid": "special_primary_uuid",
-        },
-    ]
-    return engagements
-
-
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(
-    engagements=st.lists(
-        st.sampled_from(
-            [
-                "primary_uuid",
-                "fixed_primary_uuid",
-                "special_primary_uuid",
-                "non_primary_uuid",
-                "unrelated_uuid",
-            ]
-        )
-    )
-)
-async def test_check_user_non_overlapping(
-    updater: MOPrimaryEngagementUpdaterTest, engagements
-):
-    """Test the result of running _check_user on non-overlapping engagements.
-
-    Args:
-        engagements: A list of primary uuids, these are used to create a
-            list of actual engagements, with non-overlapping validities.
-    """
-    # Create a mapping from 'from date' to engagement.
-    # 'from_date' is mocked to be (2930 + list index)
-    engagement_map = {
-        datetime.datetime(2930 + i, 1, 1): engagement
-        for i, engagement in enumerate(engagements)
-    }
-    # This effectively mocks engagement validities, as:
-    #   from: (2930 + list index)
-    #   to: (2930 + list index + 1)
-    # or in the case of the last engagement until 9999-12-30
-    cut_dates = list(engagement_map.keys()) + [datetime.datetime(9999, 12, 30, 0, 0)]
-    updater.helper.find_cut_dates.return_value = cut_dates
-
-    # As engagements are made non-overlapping, we will always return only one,
-    # namely the one found by lookup in our engagement_map
-    async def _read_engagement(user_uuid, date):
-        return [{"primary": {"uuid": engagement_map[date]}}]
-
-    updater._read_engagement = _read_engagement
-    check_filters = [
-        # Filter out special primaries
-        lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
-    ]
-
-    def gen_expected(date):
-        """Due to non-overlapping 1 or 0 will be returned for either."""
-        uuid = engagement_map.get(date)
-        count = 1 if uuid in updater.primary else 0
-        special_count = 1 if uuid == "special_primary_uuid" else 0
-        return 1, count, count - special_count
-
-    assert await updater._check_user(check_filters, "user_uuid") == {
-        date: gen_expected(date) for date in cut_dates[:-1]
-    }
-
-
-def test_engagements_at_date(overlapping_engagements: list[dict[str, Any]]):
-    """Test that engagements_at_date works as expected."""
-    # Expected data derived from engagements_fixture
-    engagements_at_date_tests = {
-        datetime.datetime(1930, 1, 1): [],
-        datetime.datetime(1931, 2, 1): ["primary_uuid"],
-        datetime.datetime(1938, 10, 1): ["primary_uuid"],
-        datetime.datetime(1939, 10, 1): ["primary_uuid", "fixed_primary_uuid"],
-        datetime.datetime(1945, 8, 1): ["primary_uuid", "fixed_primary_uuid"],
-        datetime.datetime(1946, 8, 1): ["primary_uuid"],
-        datetime.datetime(1948, 2, 1): ["primary_uuid"],
-        datetime.datetime(1949, 2, 1): ["primary_uuid", "special_primary_uuid"],
-        datetime.datetime(1951, 2, 1): ["special_primary_uuid"],
-    }
-    for date, expected in engagements_at_date_tests.items():
-        filtered_engagements = engagements_at_date(date, overlapping_engagements)
-        engagement_uuids = list(map(itemgetter("uuid"), filtered_engagements))
-        assert engagement_uuids == expected
-
-
-async def test_check_user_overlapping(
-    updater: MOPrimaryEngagementUpdaterTest,
-    overlapping_engagements: list[dict[str, Any]],
-):
-    """Test the result of running _check_user on overlapping engagements."""
-
-    # See test_engagement_at_date for details
-    async def _read_engagement(user_uuid, date):
-        return [
-            {"primary": {"uuid": engagement["uuid"]}}
-            for engagement in engagements_at_date(date, overlapping_engagements)
-        ]
-
-    updater._read_engagement = _read_engagement
-
-    # See test_mora_cut_dates for details
-    cut_dates = [
-        datetime.datetime(1931, 1, 1),
-        datetime.datetime(1939, 9, 1),
-        datetime.datetime(1945, 9, 3),  # +1
-        datetime.datetime(1949, 1, 1),
-        datetime.datetime(1950, 1, 2),  # +1
-        datetime.datetime(9999, 12, 30, 0, 0),
-    ]
-    updater.helper.find_cut_dates.return_value = cut_dates
-
-    check_filters = [
-        # Filter out special primaries
-        lambda user_uuid, eng: eng["primary"]["uuid"] != "special_primary_uuid"
-    ]
-
-    assert await updater._check_user(check_filters, "user_uuid") == {
-        # Only primary_uuid
-        datetime.datetime(1931, 1, 1, 0, 0): (1, 1, 1),
-        # Both primary_uuid and fixed_primary_uuid
-        datetime.datetime(1939, 9, 1, 0, 0): (2, 2, 2),
-        # Only primary_uuid
-        datetime.datetime(1945, 9, 3, 0, 0): (1, 1, 1),
-        # Both primary_uuid and special_primary_uuid
-        datetime.datetime(1949, 1, 1, 0, 0): (2, 2, 1),
-        # Only special_primary_uuid
-        datetime.datetime(1950, 1, 2, 0, 0): (1, 1, 0),
-    }
-
-
-async def test_check_user_outputter(updater: MOPrimaryEngagementUpdaterTest):
-    fixture_data = [
-        (datetime.datetime(1931, 1, 1, 0, 0), (2, 0, 0)),
-        (datetime.datetime(1932, 1, 1, 0, 0), (2, 1, 1)),
-        (datetime.datetime(1933, 1, 1, 0, 0), (2, 2, 0)),
-        (datetime.datetime(1934, 1, 1, 0, 0), (2, 2, 1)),
-        (datetime.datetime(1935, 1, 1, 0, 0), (2, 2, 2)),
-    ]
-    # It does not normally return an ordered dict, but for testing we want a
-    # consistent order.
-
-    async def _check_user(check_filters, user_uuid):
-        return OrderedDict(fixture_data)
-
-    updater._check_user = _check_user
-
-    _, strings, user_uuids, dates = unzip(
-        [x async for x in updater._check_user_outputter([], "user_uuid")]
-    )
-
-    assert list(strings) == [
-        "No primary",
-        "",
-        "All primaries are special",
-        "Only one non-special primary",
-        "Too many primaries",
-    ]
-
-    assert list(user_uuids) == ["user_uuid"] * 5
-    assert list(dates) == list(map(itemgetter(0), fixture_data))
-
-    _, final_strings = unzip(
-        [x async for x in updater._check_user_strings([], "user_uuid")]
-    )
-    assert list(final_strings) == [
-        "No primary for user_uuid at 1931-01-01",
-        " for user_uuid at 1932-01-01",
-        "All primaries are special for user_uuid at 1933-01-01",
-        "Only one non-special primary for user_uuid at 1934-01-01",
-        "Too many primaries for user_uuid at 1935-01-01",
-    ]
 
 
 async def test_recalculate_no_engagements(

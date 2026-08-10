@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # pylint: disable=redefined-outer-name,protected-access
 """This module contains pytest specific code, fixtures and helpers."""
+
 import os
 from typing import Iterator
 
@@ -51,5 +52,5 @@ def load_settings_overrides(
 
 
 @pytest.fixture
-def dummy_settings(load_settings_overrides) -> Iterator[dict[str, str]]:
+def dummy_settings(load_settings_overrides: dict[str, str]) -> Iterator[Settings]:
     yield Settings()

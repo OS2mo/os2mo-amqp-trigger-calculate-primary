@@ -1,40 +1,36 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-import datetime
-from typing import Any
 from typing import Self
+from typing import cast
 
 import structlog
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
+from calculate_primary.config import Settings
 from calculate_primary.model import ClassDict
 from calculate_primary.model import EngagementDict
+from calculate_primary.model import PrimaryClassesDict
+from calculate_primary.mora_helper_shim import MoraHelper
 
 logger = structlog.stdlib.get_logger()
 
 
 class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
     @classmethod
-    async def create(cls, *args, **kwargs) -> Self:
-        this = await super().create(*args, **kwargs)
+    async def create(cls, settings: Settings, mora_helper: MoraHelper) -> Self:
+        this: Self = await super().create(settings, mora_helper)
 
-        def remove_past(user_uuid, no_past, eng):
-            if no_past and eng["validity"]["to"]:
-                to = datetime.datetime.strptime(eng["validity"]["to"], "%Y-%m-%d")
-                if to < datetime.datetime.now():
-                    return False
-            return True
-
-        this.check_filters = []
-        this.calculate_filters = [remove_past]
+        this.calculate_filters = []
 
         return this
 
-    async def _find_primary_types(self):
+    async def _find_primary_types(
+        self,
+    ) -> tuple[PrimaryClassesDict, list[str]]:
         """
         Read the engagement types from MO and match them up against the three
-        known types in the OPUS->MO import.
+        known types in the MO import.
         :param helper: An instance of mora-helpers.
         :return: A dict matching up the engagement types with LoRa class uuids.
         """
@@ -50,7 +46,7 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         }
 
         primary_types: tuple[
-            list[ClassDict], Any
+            list[ClassDict], str
         ] = await self.helper.read_classes_in_facet("primary_type")
         for primary_type in primary_types[0]:
             if primary_type["user_key"] == PRIMARY:
@@ -62,11 +58,13 @@ class DefaultPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
         if None in primary_dict.values():
             raise Exception("Missing primary types: {}".format(primary_dict))
-        primary_list = [primary_dict["fixed_primary"], primary_dict["primary"]]
+        primary_list = cast(
+            list[str], [primary_dict["fixed_primary"], primary_dict["primary"]]
+        )
 
-        return primary_dict, primary_list
+        return cast(PrimaryClassesDict, primary_dict), primary_list
 
-    def _find_primary(self, mo_engagements: list[EngagementDict]):
+    def _find_primary(self, mo_engagements: list[EngagementDict]) -> str | None:
         if not mo_engagements:
             return None
 

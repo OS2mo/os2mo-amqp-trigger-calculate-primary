@@ -11,12 +11,6 @@ from calculate_primary.sd import SDPrimaryEngagementUpdater
 class SDPrimaryEngagementUpdaterTest(SDPrimaryEngagementUpdater):
     # copied from test_primary but without overwriting _find_primary
 
-    @classmethod
-    async def create(cls, settings, mora_helper: AsyncMock):
-        this = await super().create(settings, mora_helper)
-        this.helper.read_organisation.return_value = "org_uuid"
-        return this
-
     async def _find_primary_types(self):
         primary_dict = {
             "fixed_primary": "fixed_primary_uuid",

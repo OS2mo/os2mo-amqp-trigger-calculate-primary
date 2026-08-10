@@ -51,11 +51,7 @@ class MoraHelper:
             if obj.current is not None
         ]
 
-    async def find_cut_dates(
-        self, uuid: str, no_past: Literal[False] = False
-    ) -> list[datetime]:
-        assert not no_past, "`no_past=True` is not supported by this shim"
-
+    async def find_cut_dates(self, uuid: str) -> list[datetime]:
         res = await self._gql_client.get_employee_engagements(UUID(uuid))
         validities = (
             validity.validity for obj in res.objects for validity in obj.validities
