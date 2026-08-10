@@ -98,7 +98,7 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
                 return eng_id
             except Exception as exp:
                 logger.warning(
-                    "Skippning engangement with non-integer employment_id: {}".format(
+                    "Skipping engagement with non-integer employment_id: {}".format(
                         engagement["user_key"]
                     )
                 )
