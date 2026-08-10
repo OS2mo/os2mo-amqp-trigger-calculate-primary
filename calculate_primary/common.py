@@ -11,7 +11,6 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from more_itertools import ilen
 from more_itertools import only
 from more_itertools import pairwise
 
@@ -56,11 +55,6 @@ class NoPrimaryFound(Exception):
     the _find_primary method.
     """
 
-    pass
-
-
-def noop(*args, **kwargs):
-    """Noop function, which consumes arguments and does nothing."""
     pass
 
 
@@ -158,122 +152,6 @@ class MOPrimaryEngagementUpdater(ABC):
             )
             return True
         return False
-
-    def _count_primary_engagements(
-        self, check_filters, user_uuid, mo_engagements: list[EngagementDict]
-    ):
-        """Count number of primaries.
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to who owns the engagements.
-            engagements: A list of MO engagements to count primaries from.
-
-        Returns:
-            3-tuple:
-                engagement_count: Number of engagements processed.
-                primary_count: Number of primaries found.
-                filtered_primary_count: Number of primaries passing check_filters.
-        """
-        # Count number of engagements
-        mo_engagements = list(mo_engagements)
-        engagement_count = len(mo_engagements)
-
-        # Count number of primary engagements, by filtering on self.primary
-        primary_mo_engagements = list(
-            filter(
-                lambda eng: eng["primary"]["uuid"] in self.primary,
-                mo_engagements,
-            )
-        )
-        primary_count = len(primary_mo_engagements)
-
-        # Count number of primary engagements, by filtering out special primaries
-        # What consistutes a 'special primary' depend on the subclass implementation
-        for filter_func in check_filters:
-            primary_mo_engagements = filter(
-                partial(filter_func, user_uuid), primary_mo_engagements
-            )
-        filtered_primary_count = ilen(primary_mo_engagements)
-
-        return engagement_count, primary_count, filtered_primary_count
-
-    async def _check_user(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Dictionary:
-                key: Date at which the value is valid.
-                value: A 3-tuple, from _count_primary_engagements.
-        """
-        # List of cut dates, excluding the very last one
-        date_list: list[datetime] = await self.helper.find_cut_dates(uuid=user_uuid)
-        date_list = date_list[:-1]
-        # Map all our dates, to their corresponding engagements.
-        mo_engagements = [
-            await self._read_engagement(user_uuid, date) for date in date_list
-        ]
-        # Map mo_engagements to primary counts
-        primary_counts = (
-            self._count_primary_engagements(check_filters, user_uuid, engs)
-            for engs in mo_engagements
-        )
-        # Create dicts from cut_dates --> primary_counts
-        return dict(zip(date_list, primary_counts))
-
-    async def _check_user_outputter(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Generator of output 4-tuples:
-                outputter: Function to output strings to
-                string: The base output string
-                user_uuid: User UUID for the output string
-                date: Date for the output string
-        """
-
-        def to_output(e_count, p_count, fp_count):
-            if e_count == 0:
-                return (noop, "")
-            if p_count == 0:
-                return (print, "No primary")
-            if p_count == 1:
-                return (noop, "")
-            if fp_count == 0:
-                return (logger.info, "All primaries are special")
-            if fp_count == 1:
-                return (logger.info, "Only one non-special primary")
-            return (print, "Too many primaries")
-
-        user_results = await self._check_user(check_filters, user_uuid)
-        for date, (e_count, p_count, fp_count) in user_results.items():
-            outputter, string = to_output(e_count, p_count, fp_count)
-            yield outputter, string, user_uuid, date
-
-    async def _check_user_strings(self, check_filters, user_uuid):
-        """Check the users primary engagement(s).
-
-        Args:
-            check_filters: A list of predicate functions from (user_uuid, eng).
-            user_uuid: UUID of the user to check.
-
-        Returns:
-            Generator of output 2-tuples:
-                outputter: Function to output strings to
-                string: Formatted output string
-        """
-        outputs = self._check_user_outputter(check_filters, user_uuid)
-        async for outputter, string, user_uuid, date in outputs:
-            final_string = string + " for {} at {}".format(user_uuid, date.date())
-            yield outputter, final_string
 
     def _decide_primary(self, mo_engagements):
         """Decide which of the engagements in mo_engagements is the primary one.
