@@ -66,6 +66,7 @@ type = "uuid.UUID"
 
 [tool.pytest.ini_options]
 asyncio_mode="auto"
+collect_imported_tests = false
 
 [tool.mypy]
 python_version = "3.11"

@@ -16,7 +16,7 @@ Adjust the `AMQP_HOST` variable to OS2mo's running message-broker, either;
 Add variables from MoraHelper and more.
 
 Now start the container using `docker-compose`:
-```
+```sh
 docker-compose up -d
 ```
 
@@ -61,44 +61,28 @@ Recalculating user: 23d2dfc7-6ceb-47cf-97ed-db6beadcb09b
 ### Getting Started
 
 1. Clone the repository:
-```
-git clone git@git.magenta.dk:rammearkitektur/ramqp.git
+```sh
+git clone https://github.com/OS2mo/os2mo-amqp-trigger-calculate-primary.git
 ```
 
 2. Install all dependencies:
-```
+```sh
 poetry install
 ```
 
 3. Set up pre-commit:
-```
+```sh
 poetry run pre-commit install
 ```
 
 ### Running the tests
 
-You use `poetry` and `pytest` to run the tests:
+You need to have a running [os2mo](https://github.com/OS2mo/os2mo) stack to run tests.
 
-`poetry run pytest`
-
-You can also run specific files
-
-`poetry run pytest tests/<test_folder>/<test_file.py>`
-
-and even use filtering with `-k`
-
-`poetry run pytest -k "Manager"`
-
-You can use the flags `-vx` where `v` prints the test & `x` makes the test stop if any tests fails (Verbose, X-fail)
-
-#### Running the integration tests
-
-To run the integration tests, an AMQP instance must be available.
-
-If an instance is already available, it can be used by configuring the `AMQP_URL`
-environmental variable. Alternatively a RabbitMQ can be started in docker, using:
-```
-docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+Then run:
+```sh
+docker compose up -d
+docker compose run --rm calculate-primary pytest .
 ```
 
 ## Versioning
