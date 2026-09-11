@@ -1,34 +1,35 @@
 # SPDX-FileCopyrightText: Magenta ApS <https://magenta.dk>
 # SPDX-License-Identifier: MPL-2.0
 import asyncio
+from uuid import UUID
 
 import structlog
-from fastramqpi.ramqp.depends import RateLimit
-from fastramqpi.ramqp.mo import MORouter
-from fastramqpi.ramqp.mo import PayloadUUID
+from fastapi import APIRouter
+from fastramqpi.events import Event
 from more_itertools import only
 
 from calculate_primary import depends
 from calculate_primary.main import calculate_user
 
-router = MORouter()
+router = APIRouter()
 
 logger = structlog.stdlib.get_logger()
 
 
-@router.register("engagement")
+@router.post("/events/mo/engagement")
 async def calculate_engagement(
-    engagement_uuid: PayloadUUID,
+    event: Event[UUID],
     mo: depends.GraphQLClient,
     updater: depends.Updater,
     settings: depends.Settings,
-    _: RateLimit,
 ) -> None:
-    await asyncio.sleep(settings.delay_amqp)
+    engagement_uuid = event.subject
+
+    await asyncio.sleep(settings.delay_event)
     logger.info(
         "Processing event for engagement",
         engagement_uuid=engagement_uuid,
-        delay=settings.delay_amqp,
+        delay=settings.delay_event,
     )
 
     result = await mo.get_engagement_person(engagement_uuid)

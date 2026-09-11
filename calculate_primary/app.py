@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from fastapi import FastAPI
+from fastramqpi.events import GraphQLEvents
+from fastramqpi.events import Listener
 from fastramqpi.main import FastRAMQPI
 
 from calculate_primary import events
@@ -17,13 +19,26 @@ def create_app() -> FastAPI:
         settings=settings.fastramqpi,
         graphql_version=22,
         graphql_client_cls=GraphQLClient,
+        graphql_events=GraphQLEvents(
+            declare_listeners=[
+                Listener(
+                    namespace="mo",
+                    user_key="calculate_primary",
+                    routing_key="engagement",
+                    path="/events/mo/engagement",
+                    parallelism=1,
+                )
+            ]
+        ),
     )
 
-    fastramqpi.add_lifespan_manager(setup_updater(settings, fastramqpi))
+    # The event fetchers are started at priority 1000, and immediately begin
+    # calling the event handlers, which depend on the updater. Therefore the
+    # updater must be set up before them.
+    fastramqpi.add_lifespan_manager(setup_updater(settings, fastramqpi), priority=500)
     fastramqpi.add_context(settings=settings)
 
-    # MO AMQP
-    mo_amqp_system = fastramqpi.get_amqpsystem()
-    mo_amqp_system.router.registry.update(events.router.registry)
+    app = fastramqpi.get_app()
+    app.include_router(events.router)
 
-    return fastramqpi.get_app()
+    return app
