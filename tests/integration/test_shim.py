@@ -33,7 +33,7 @@ logger = structlog.stdlib.get_logger()
 
 
 @pytest.mark.integration_test
-@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_AMQP": "1"})
+@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_EVENT": "1"})
 async def test_read_user_engagements(
     mora_helper: MoraHelper,
     graphql_client: GraphQLClient,
@@ -127,7 +127,7 @@ async def test_read_user_engagements(
 
 
 @pytest.mark.integration_test
-@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_AMQP": "1"})
+@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_EVENT": "1"})
 async def test_find_cut_dates(
     mora_helper: MoraHelper,
     graphql_client: GraphQLClient,
@@ -188,7 +188,7 @@ async def test_find_cut_dates(
 
 
 @pytest.mark.integration_test
-@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_AMQP": "1"})
+@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_EVENT": "1"})
 async def test_mo_post(
     mora_helper: MoraHelper,
     graphql_client: GraphQLClient,
@@ -264,7 +264,7 @@ async def test_mo_post(
 
 
 @pytest.mark.integration_test
-@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_AMQP": "1"})
+@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_EVENT": "1"})
 async def test_read_classes_in_facet(
     mora_helper: MoraHelper,
     graphql_client: GraphQLClient,
@@ -298,7 +298,7 @@ async def test_read_classes_in_facet(
 
 
 @pytest.mark.integration_test
-@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_AMQP": "1"})
+@pytest.mark.envvar({"INTEGRATION": "DEFAULT", "DELAY_EVENT": "1"})
 async def test_mo_post_error_400(
     mora_helper: MoraHelper,
     graphql_client: GraphQLClient,
