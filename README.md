@@ -9,48 +9,28 @@ OS2mo AMQP Trigger for recalculating primary.
 
 ## Usage
 
-Adjust the `AMQP_HOST` variable to OS2mo's running message-broker, either;
-* directly in `docker-compose.yml` or
+Adjust the `FASTRAMQPI__MO_URL` variable and the other settings to point at your
+running OS2mo instance, either;
+* directly in `docker-compose.yaml` or
 * by creating a `docker-compose.override.yaml` file.
 
-Add variables from MoraHelper and more.
-
-Now start the container using `docker-compose`:
+Now start the container using `docker compose`:
 ```sh
-docker-compose up -d
+docker compose up -d
 ```
 
-You should see the following:
-```
-Configuring calculate-primary logging
-Acquiring updater: SD
-Got class: <class 'integrations.calculate_primary.sd.SDPrimaryEngagementUpdater'>
-Got object: <integrations.calculate_primary.sd.SDPrimaryEngagementUpdater object at 0x7fe055067a30>
-Establishing AMQP connection to amqp://guest:xxxxx@msg_broker:5672/
-Creating AMQP channel
-Attaching AMQP exchange to channel
-Declaring unique message queue: os2mo-consumer-db169240-4054-4818-a333-15ca41ba9835
-Binding routing-key: employee.employee.create
-Binding routing-key: employee.employee.edit
-Binding routing-key: employee.employee.terminate
-Binding routing-key: employee.engagement.create
-Binding routing-key: employee.engagement.edit
-Binding routing-key: employee.engagement.terminate
-Listening for messages
-```
-
-At which point an update to an employee or engagement in OS2mo should trigger an event similar to:
+The integration uses OS2mo's GraphQL event system. On startup it declares a
+listener on the `engagement` routing key in the `mo` namespace, and OS2mo events
+are then delivered as HTTP POSTs to its own `/events/mo/engagement` endpoint:
 ```
 {
-    "routing-key": "employee.employee.edit",
-    "body": {
-        "uuid": "23d2dfc7-6ceb-47cf-97ed-db6beadcb09b",
-        "object_uuid": "23d2dfc7-6ceb-47cf-97ed-db6beadcb09b",
-        "time": "2022-01-04T00:00:00+01:00"
-    }
+    "subject": "23d2dfc7-6ceb-47cf-97ed-db6beadcb09b",
+    "priority": 10000
 }
-Recalculating user: 23d2dfc7-6ceb-47cf-97ed-db6beadcb09b
 ```
+
+Each event causes the employee(s) related to the engagement to have their
+primary engagement recalculated.
 
 ## Development
 

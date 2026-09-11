@@ -11,6 +11,8 @@ services:
       FASTRAMQPI__CLIENT_SECRET: "603f1c82-d012-4d04-9382-dbe659c533fb"
       FASTRAMQPI__AUTH_SERVER: "http://keycloak:8080/auth"
       FASTRAMQPI__AUTH_REALM: "mo"
+      # The integration itself no longer uses AMQP, but FastRAMQPI's pytest
+      # fixtures need to reach the message broker to isolate tests.
       FASTRAMQPI__AMQP__URL: "amqp://guest:guest@msg-broker:5672/"
 
       INTEGRATION: DEFAULT
