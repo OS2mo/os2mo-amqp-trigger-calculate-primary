@@ -21,7 +21,7 @@ class EngagementDict(TypedDict):
     uuid: str
     user_key: str
     fraction: int | None
-    engagement_type: EngagementTypeDict
+    engagement_type: EngagementTypeDict | None
     primary: EngagementPrimaryDict | None
     validity: ValidityDict
     primary_score: NotRequired[int]

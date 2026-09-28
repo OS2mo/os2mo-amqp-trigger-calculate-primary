@@ -140,9 +140,13 @@ def _gql_engagement_to_service_engagement(
     uuid = str(eng.uuid)
     user_key = eng.user_key
     fraction = eng.fraction
-    engagement_type_current = eng.engagement_type_response.current
-    assert engagement_type_current is not None
-    engagement_type: EngagementTypeDict = {"uuid": str(engagement_type_current.uuid)}
+    engagement_type: EngagementTypeDict | None
+    # the engagement type class may not be valid at the time we are looking at,
+    # in which case MO returns no class at all
+    if engagement_type_current := eng.engagement_type_response.current:
+        engagement_type = {"uuid": str(engagement_type_current.uuid)}
+    else:
+        engagement_type = None
     primary: EngagementPrimaryDict | None
     if (res := eng.primary_response) and (current := res.current):
         primary = {"uuid": str(current.uuid)}
