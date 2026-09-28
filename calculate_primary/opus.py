@@ -83,12 +83,11 @@ class OPUSPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
         # If two engagements have the same engagement_type, the tie is broken by
         # picking the one with the lowest user-key integer.
         def get_engagement_type_id(engagement: EngagementDict) -> float:
-            if (
-                engagement["engagement_type"]["uuid"]
-                in self.settings.eng_types_primary_order
-            ):
+            engagement_type = engagement["engagement_type"]
+            assert engagement_type is not None
+            if engagement_type["uuid"] in self.settings.eng_types_primary_order:
                 return self.settings.eng_types_primary_order.index(
-                    engagement["engagement_type"]["uuid"]  # type: ignore
+                    engagement_type["uuid"]  # type: ignore
                 )
             return math.inf
 
