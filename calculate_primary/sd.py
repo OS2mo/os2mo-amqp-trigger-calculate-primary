@@ -5,6 +5,7 @@ from typing import Self
 from typing import cast
 
 import structlog
+from more_itertools import last
 
 from calculate_primary.common import MOPrimaryEngagementUpdater
 from calculate_primary.config import Settings
@@ -106,9 +107,14 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
     def _find_primary(self, mo_engagements: list[EngagementDict]) -> str | None:
         def set_primary_score(mo_engagement: EngagementDict) -> None:
+            # SDTool+ may prefix the SD EmploymentIdentifier with the SD
+            # InstitutionIdentifier, i.e.
+            # "<InstitutionIdentifier>-<EmploymentIdentifier>", so we strip the
+            # prefix (if any) before parsing the EmploymentIdentifier
+            employment_id = last(mo_engagement["user_key"].rsplit("-", 1))
             # Engagements with non-integer user_keys are only primary if no other engagements are present
             try:
-                mo_engagement["primary_score"] = int(mo_engagement["user_key"])
+                mo_engagement["primary_score"] = int(employment_id)
             except ValueError:
                 mo_engagement["primary_score"] = 100000
 
