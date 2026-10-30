@@ -277,3 +277,96 @@ async def test_engagement_type_is_null_in_the_past(
             assert one(validity.primary_response.validities).uuid == non_primary
 
     await verify()
+
+
+@pytest.mark.integration_test
+@pytest.mark.envvar({"INTEGRATION": "SD", "DELAY_EVENT": "1"})
+@pytest.mark.parametrize(
+    "engagements",
+    [
+        # Highest fraction wins
+        [
+            ("00100", 1_000_000, "Ansat"),
+            ("00010", 500_000, "non-primary"),
+        ],
+        # Same fraction, lowest user key wins
+        [
+            ("00100", 500_000, "non-primary"),
+            ("00010", 500_000, "Ansat"),
+        ],
+        # No fraction, lowest user key wins
+        [
+            ("00100", None, "non-primary"),
+            ("00010", None, "Ansat"),
+        ],
+        # Non-integer user key loses
+        [
+            ("EAAYT", 500_000, "non-primary"),
+            ("00100", 500_000, "Ansat"),
+        ],
+        # Prefixed user keys, highest fraction wins
+        [
+            ("AB-00100", 1_000_000, "Ansat"),
+            ("CD-00010", 500_000, "non-primary"),
+        ],
+        # Prefixed user keys, same fraction, lowest EmploymentIdentifier wins.
+        [
+            ("AB-00333", 500_000, "non-primary"),
+            ("CD-00010", 500_000, "Ansat"),
+            ("EF-00777", 500_000, "non-primary"),
+        ],
+    ],
+)
+async def test_sd_primary_calculation(
+    test_client: AsyncClient,
+    graphql_client: GraphQLClient,
+    default_org_unit: TestingCreateOrgUnitOrgUnitCreate,
+    default_employee: TestingCreateEmployeeEmployeeCreate,
+    default_engagement_type: TestingCreateClassClassCreate,
+    primary_types: dict[str, UUID],
+    engagements: list[tuple[str, int | None, str]],
+) -> None:
+    """
+    Tests that `SD` picks the engagement with the highest fraction, and
+    tie-breaks on the lowest user key. SDTool+ may prefix the engagement user
+    keys with the InstitutionIdentifier, i.e.
+    "<InstitutionIdentifier>-<EmploymentIdentifier>", in which case the
+    tie-break is on the EmploymentIdentifier.
+
+    Each engagement is given as (user key, fraction, expected primary type).
+    """
+
+    # Arrange
+    tz = ZoneInfo("Europe/Copenhagen")
+    t0 = datetime(2020, 1, 1, tzinfo=tz)
+    non_primary = primary_types["non-primary"]
+
+    # Act
+    expected_primary_types: dict[UUID, str] = dict()
+    for user_key, fraction, expected_primary_type in engagements:
+        engagement = await graphql_client._testing__create_engagement(
+            EngagementCreateInput(
+                validity=RAValidityInput(from_=t0),
+                org_unit=default_org_unit.uuid,
+                engagement_type=default_engagement_type.uuid,
+                job_function=uuid.uuid4(),
+                person=default_employee.uuid,
+                primary=non_primary,
+                user_key=user_key,
+                fraction=fraction,
+            )
+        )
+        expected_primary_types[engagement.uuid] = expected_primary_type
+
+    # Assert
+    @retry(stop=stop_after_delay(30))
+    async def verify() -> None:
+        for engagement_uuid, expected_primary_type in expected_primary_types.items():
+            engagements = await graphql_client._testing__get_engagement(engagement_uuid)
+            obj = one(engagements.objects)
+            validity = one(obj.validities)
+            assert validity.primary_response is not None
+            primary_type = one(validity.primary_response.validities).uuid
+            assert primary_type == primary_types[expected_primary_type]
+
+    await verify()
