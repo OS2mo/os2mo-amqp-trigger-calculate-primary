@@ -370,3 +370,72 @@ async def test_sd_primary_calculation(
             assert primary_type == primary_types[expected_primary_type]
 
     await verify()
+
+
+@pytest.mark.integration_test
+@pytest.mark.envvar({"INTEGRATION": "SD", "DELAY_EVENT": "1"})
+async def test_sd_prefixed_user_keys_regression(
+    test_client: AsyncClient,
+    graphql_client: GraphQLClient,
+    default_org_unit: TestingCreateOrgUnitOrgUnitCreate,
+    default_employee: TestingCreateEmployeeEmployeeCreate,
+    default_engagement_type: TestingCreateClassClassCreate,
+    primary_types: dict[str, UUID],
+) -> None:
+    """
+    Regression test for SDTool+ prefixing the engagement user keys with the
+    InstitutionIdentifier, i.e. "<InstitutionIdentifier>-<EmploymentIdentifier>".
+
+    If the prefix is not stripped, the two engagements tie, and the engagement
+    returned first by MO wins. MO returns the engagements ordered by UUID, so
+    engagement 1 is given the lowest UUID to make it win in that case.
+    """
+
+    # Arrange
+    tz = ZoneInfo("Europe/Copenhagen")
+    t0 = datetime(2020, 1, 1, tzinfo=tz)
+    non_primary = primary_types["non-primary"]
+    primary = primary_types["Ansat"]
+
+    # Act
+    engagement_1 = await graphql_client._testing__create_engagement(
+        EngagementCreateInput(
+            uuid=UUID("00000000-0000-0000-0000-000000000001"),
+            validity=RAValidityInput(from_=t0),
+            org_unit=default_org_unit.uuid,
+            engagement_type=default_engagement_type.uuid,
+            job_function=uuid.uuid4(),
+            person=default_employee.uuid,
+            primary=non_primary,
+            user_key="AB-00100",
+            fraction=500_000,
+        )
+    )
+    engagement_2 = await graphql_client._testing__create_engagement(
+        EngagementCreateInput(
+            uuid=UUID("00000000-0000-0000-0000-000000000002"),
+            validity=RAValidityInput(from_=t0),
+            org_unit=default_org_unit.uuid,
+            engagement_type=default_engagement_type.uuid,
+            job_function=uuid.uuid4(),
+            person=default_employee.uuid,
+            primary=non_primary,
+            user_key="CD-00010",
+            fraction=500_000,
+        )
+    )
+
+    # Assert
+    @retry(stop=stop_after_delay(30))
+    async def verify() -> None:
+        engagements = await graphql_client._testing__get_engagement(engagement_1.uuid)
+        validity = one(one(engagements.objects).validities)
+        assert validity.primary_response is not None
+        assert one(validity.primary_response.validities).uuid == non_primary
+
+        engagements = await graphql_client._testing__get_engagement(engagement_2.uuid)
+        validity = one(one(engagements.objects).validities)
+        assert validity.primary_response is not None
+        assert one(validity.primary_response.validities).uuid == primary
+
+    await verify()
