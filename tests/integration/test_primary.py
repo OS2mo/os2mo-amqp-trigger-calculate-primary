@@ -286,34 +286,50 @@ async def test_engagement_type_is_null_in_the_past(
     [
         # Highest fraction wins
         [
-            ("00100", 1_000_000, "Ansat"),
-            ("00010", 500_000, "non-primary"),
+            ("00100", 1_000_000, "non-primary", "Ansat"),
+            ("00010", 500_000, "non-primary", "non-primary"),
         ],
         # Same fraction, lowest user key wins
         [
-            ("00100", 500_000, "non-primary"),
-            ("00010", 500_000, "Ansat"),
+            ("00100", 500_000, "non-primary", "non-primary"),
+            ("00010", 500_000, "non-primary", "Ansat"),
         ],
         # No fraction, lowest user key wins
         [
-            ("00100", None, "non-primary"),
-            ("00010", None, "Ansat"),
+            ("00100", None, "non-primary", "non-primary"),
+            ("00010", None, "non-primary", "Ansat"),
         ],
         # Non-integer user key loses
         [
-            ("EAAYT", 500_000, "non-primary"),
-            ("00100", 500_000, "Ansat"),
+            ("EAAYT", 500_000, "non-primary", "non-primary"),
+            ("00100", 500_000, "non-primary", "Ansat"),
         ],
         # Prefixed user keys, highest fraction wins
         [
-            ("AB-00100", 1_000_000, "Ansat"),
-            ("CD-00010", 500_000, "non-primary"),
+            ("AB-00100", 1_000_000, "non-primary", "Ansat"),
+            ("CD-00010", 500_000, "non-primary", "non-primary"),
         ],
         # Prefixed user keys, same fraction, lowest EmploymentIdentifier wins.
         [
-            ("AB-00333", 500_000, "non-primary"),
-            ("CD-00010", 500_000, "Ansat"),
-            ("EF-00777", 500_000, "non-primary"),
+            ("AB-00333", 500_000, "non-primary", "non-primary"),
+            ("CD-00010", 500_000, "non-primary", "Ansat"),
+            ("EF-00777", 500_000, "non-primary", "non-primary"),
+        ],
+        # Fixed primary wins, even with lower fraction and higher user key
+        [
+            ("00010", 1_000_000, "non-primary", "non-primary"),
+            ("00100", 500_000, "explicitly-primary", "explicitly-primary"),
+        ],
+        # Fixed primary wins over an engagement which is already primary
+        [
+            ("00010", 1_000_000, "Ansat", "non-primary"),
+            ("00100", 500_000, "explicitly-primary", "explicitly-primary"),
+        ],
+        # Prefixed user keys, fixed primary wins, even with lower fraction and
+        # higher EmploymentIdentifier
+        [
+            ("AB-00010", 1_000_000, "non-primary", "non-primary"),
+            ("CD-00100", 500_000, "explicitly-primary", "explicitly-primary"),
         ],
     ],
 )
@@ -324,26 +340,27 @@ async def test_sd_primary_calculation(
     default_employee: TestingCreateEmployeeEmployeeCreate,
     default_engagement_type: TestingCreateClassClassCreate,
     primary_types: dict[str, UUID],
-    engagements: list[tuple[str, int | None, str]],
+    engagements: list[tuple[str, int | None, str, str]],
 ) -> None:
     """
     Tests that `SD` picks the engagement with the highest fraction, and
     tie-breaks on the lowest user key. SDTool+ may prefix the engagement user
     keys with the InstitutionIdentifier, i.e.
     "<InstitutionIdentifier>-<EmploymentIdentifier>", in which case the
-    tie-break is on the EmploymentIdentifier.
+    tie-break is on the EmploymentIdentifier. An engagement which is fixed
+    primary ("explicitly-primary") always stays primary.
 
-    Each engagement is given as (user key, fraction, expected primary type).
+    Each engagement is given as
+    (user key, fraction, initial primary type, expected primary type).
     """
 
     # Arrange
     tz = ZoneInfo("Europe/Copenhagen")
     t0 = datetime(2020, 1, 1, tzinfo=tz)
-    non_primary = primary_types["non-primary"]
 
     # Act
     expected_primary_types: dict[UUID, str] = dict()
-    for user_key, fraction, expected_primary_type in engagements:
+    for user_key, fraction, initial_primary_type, expected_primary_type in engagements:
         engagement = await graphql_client._testing__create_engagement(
             EngagementCreateInput(
                 validity=RAValidityInput(from_=t0),
@@ -351,7 +368,7 @@ async def test_sd_primary_calculation(
                 engagement_type=default_engagement_type.uuid,
                 job_function=uuid.uuid4(),
                 person=default_employee.uuid,
-                primary=non_primary,
+                primary=primary_types[initial_primary_type],
                 user_key=user_key,
                 fraction=fraction,
             )
