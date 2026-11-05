@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     dry_run: bool = False
     eng_types_primary_order: list[UUID] = []
 
+    # The user_key for the primary class under the "primary_type" facet when using the
+    # SD integration
+    sd_primary_user_key: str = "Ansat"
+
     # Wait delay_event seconds before processing events to help avoid race conditions
     # between integrations (see motivation on https://redmine.magenta.dk/issues/61815)
     delay_event: PositiveInt = 10

@@ -24,13 +24,17 @@ logger = structlog.stdlib.get_logger()
 # unlikely that it will be removed from the SD-integration anyway as this
 # integration should not have the responsibility of calculating primary
 # engagements
-async def get_primary_types(helper: MoraHelper) -> PrimaryClassesDict:
+async def get_primary_types(
+    helper: MoraHelper,
+    primary_class_user_key: str,
+) -> PrimaryClassesDict:
     """
     Read the engagement types from MO and match them up against the four
     known types in the SD->MO import.
 
     Args:
         helper: An instance of mora-helpers.
+        primary_class_user_key: The primary class user key.
 
     Returns:
         A dict matching up the engagement types with LoRa class uuids (
@@ -49,7 +53,6 @@ async def get_primary_types(helper: MoraHelper) -> PrimaryClassesDict:
 
     # These constants are global in all SD municipalities (because they are created
     # by the SD->MO importer.
-    PRIMARY = "Ansat"
     NON_PRIMARY = "non-primary"
     FIXED_PRIMARY = "explicitly-primary"
 
@@ -62,7 +65,7 @@ async def get_primary_types(helper: MoraHelper) -> PrimaryClassesDict:
         "primary_type"
     )
     for primary_type in primary_types[0]:
-        if primary_type["user_key"] == PRIMARY:
+        if primary_type["user_key"] == primary_class_user_key:
             primary = primary_type["uuid"]
         if primary_type["user_key"] == NON_PRIMARY:
             non_primary = primary_type["uuid"]
@@ -95,7 +98,9 @@ class SDPrimaryEngagementUpdater(MOPrimaryEngagementUpdater):
 
     async def _find_primary_types(self) -> tuple[PrimaryClassesDict, list[str]]:
         # Keys are; fixed_primary, primary and non-primary
-        primary_types = await get_primary_types(self.helper)
+        primary_types = await get_primary_types(
+            self.helper, self.settings.sd_primary_user_key
+        )
         primary = cast(
             list[str],
             [
